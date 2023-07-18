@@ -1,10 +1,37 @@
 from typing import Callable
 
-from manim import Scene
+import functools
+
+from .codeconfig import CodeConfig
+from .codescene import CodeScene
 
 
-def code_animation(function: Callable) -> Callable:
-    return type(function.__name__, (Scene,), dict(
+def code_animation(
+        function: Callable = None,
+        /,
+        *,
+        font: str = None,
+        font_size: int = None,
+        delay: float = None,
+        delay_before: float = None,
+        delay_after: float = None,
+):
+    if function is None:
+        return functools.partial(code_animation,
+            font = font,
+            font_size = font_size,
+            delay = delay,
+            delay_before = delay_before,
+            delay_after = delay_after,
+        )
+    return type(function.__name__, (CodeScene,), dict(
         construct = function,
         __module__ = function.__module__, # Required by manim to recognize that a class is a scene.
+        code_config = CodeConfig(
+            font = font,
+            font_size = font_size,
+            delay = delay,
+            delay_before = delay_before,
+            delay_after = delay_after,
+        ),
     ))
