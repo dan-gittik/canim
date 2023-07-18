@@ -21,5 +21,14 @@ class CodeLine:
     def number(self) -> int:
         return self.index + 1
 
+    def prepend_line(self, text: str) -> CodeLine:
+        if self.index == 0:
+            self._block.prepend_line(text)
+        else:
+            return self._block.insert_line(text, self.index)
+   
+    def append_line(self, text: str) -> CodeLine:
+        return self._block.insert_line(text, self.index + 1)
+    
 
 from .codeblock import CodeBlock
