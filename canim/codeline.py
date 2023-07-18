@@ -21,14 +21,17 @@ class CodeLine:
     def number(self) -> int:
         return self.index + 1
 
-    def prepend_line(self, text: str) -> CodeLine:
+    def prepend_lines(self, *strings: str) -> CodeLine:
         if self.index == 0:
-            self._block.prepend_line(text)
+            self._block.prepend_lines(*strings)
         else:
-            return self._block.insert_line(text, self.index)
+            return self._block.insert_lines(self.index, *strings)
    
-    def append_line(self, text: str) -> CodeLine:
-        return self._block.insert_line(text, self.index + 1)
+    def append_lines(self, *strings: str) -> CodeLine:
+        return self._block.insert_lines(self.index + 1, *strings)
+        
+    def remove(self) -> None:
+        self._block.remove_lines(self)
     
 
 from .codeblock import CodeBlock
