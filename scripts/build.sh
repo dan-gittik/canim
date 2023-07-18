@@ -12,4 +12,4 @@ fi
 SCENE_PATH="$1"
 SCENE_NAME="$2"
 
-.env/bin/manim -ql "$SCENE_PATH" "$SCENE_NAME"
+.env/bin/manim -ql --save_sections "$SCENE_PATH" "$SCENE_NAME"
