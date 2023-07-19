@@ -13,6 +13,15 @@ class CodeLine:
     def __repr__(self):
         return f'<line {self.number}: {self.text}>'
     
+    def __neg__(self) -> CodeBlock:
+        self.remove()
+    
+    def __rshift__(self, *strings: str) -> list[CodeLine]:
+        return self.append_lines(*strings)
+
+    def __lshift__(self, *strings: str) -> list[CodeLine]:
+        return self.prepend_lines(*strings)
+
     @property
     def index(self):
         return self._block._lines.index(self)
@@ -32,6 +41,36 @@ class CodeLine:
         
     def remove(self) -> None:
         self._block.remove_lines(self)
+
+
+class CodeLineGroup:
+
+    def __init__(self, block: CodeBlock, lines: list[CodeLine]):
+        self._block = block
+        self._lines = lines
+    
+    def __repr__(self):
+        return f'<line group: {", ".join(str(line.number) for line in self._lines)}>'
+    
+    def __neg__(self) -> CodeLineGroup:
+        self.remove()
+    
+    def __rshift__(self, *strings: str) -> list[CodeLine]:
+        return self.last_line.append_lines(*strings)
+    
+    def __lshift__(self, *strings: str) -> list[CodeLine]:
+        return self.first_line.prepend_lines(*strings)
+    
+    @property
+    def first_line(self) -> CodeLine:
+        return min(self._lines, key=lambda line: line.index)
+    
+    @property
+    def last_line(self) -> CodeLine:
+        return max(self._lines, key=lambda line: line.index)
+    
+    def remove(self) -> None:
+        self._block.remove_lines(*self._lines)
     
 
 from .codeblock import CodeBlock
