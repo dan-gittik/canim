@@ -17,6 +17,7 @@ def code_animation(
         delay_after: float = None,
         typing_speed: float = None,
         slide_speed: float = None,
+        voiceover: bool = None,
 ):
     if function is None:
         return functools.partial(code_animation,
@@ -27,6 +28,7 @@ def code_animation(
             delay_after = delay_after,
             typing_speed = typing_speed,
             slide_speed = slide_speed,
+            voiceover = voiceover,
         )
     return type(function.__name__, (CodeScene,), dict(
         construct = function,
@@ -39,5 +41,6 @@ def code_animation(
             delay_after = delay_after,
             typing_speed = typing_speed,
             slide_speed = slide_speed,
+            voiceover = voiceover,
         ),
     ))
