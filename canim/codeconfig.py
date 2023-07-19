@@ -6,6 +6,7 @@ class CodeConfig:
     default_delay = 0.5
     default_typing_speed = 0.1
     default_slide_speed = 0.5
+    default_voiceover = False
 
     def __init__(
             self,
@@ -17,6 +18,7 @@ class CodeConfig:
             delay_after: float = None,
             typing_speed: float = None,
             slide_speed: float = None,
+            voiceover: bool = None,
     ):
         if font is None:
             font = self.default_font
@@ -34,6 +36,8 @@ class CodeConfig:
             typing_speed = self.default_typing_speed
         if slide_speed is None:
             slide_speed = self.default_slide_speed
+        if voiceover is None:
+            voiceover = self.default_voiceover
         self.font = font
         self.font_size = font_size
         self.line_gap = line_gap
@@ -42,3 +46,4 @@ class CodeConfig:
         self.delay_after = delay_after
         self.typing_speed = typing_speed
         self.slide_speed = slide_speed
+        self.voiceover = voiceover
