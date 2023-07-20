@@ -39,8 +39,8 @@ class Bauhaus(Window):
         return self.parent
     
     @property
-    def y_padding(self) -> float:
-        return super().y_padding + self.border_offset
+    def top_padding(self) -> float:
+        return super().top_padding + self.border_offset
 
     def initialize(self, scene: CodeScene, animate: bool) -> None:
         window = Rectangle(

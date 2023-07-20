@@ -11,10 +11,15 @@ class CodeLine:
         self._mobject: Mobject = None
     
     def __repr__(self):
-        return f'<line {self.number}: {self.text}>'
+        return f'<line {self.number or "*"}: {self.text}>'
     
     def __neg__(self) -> CodeBlock:
         self.remove()
+        return self
+    
+    def __invert__(self) -> CodeBlock:
+        self.scroll_into_view()
+        return self
     
     def __rshift__(self, *strings: str) -> list[CodeLine]:
         return self.append_lines(*strings)
@@ -23,12 +28,15 @@ class CodeLine:
         return self.prepend_lines(*strings)
 
     @property
-    def index(self):
-        return self._block._lines.index(self)
+    def index(self) -> None|int:
+        try:
+            return self._block._lines.index(self)
+        except ValueError:
+            return None
     
     @property
-    def number(self) -> int:
-        return self.index + 1
+    def number(self) -> None|int:
+        return self.index and self.index + 1
 
     def prepend_lines(self, *strings: str) -> CodeLine:
         if self.index == 0:
@@ -41,6 +49,9 @@ class CodeLine:
         
     def remove(self) -> None:
         self._block.remove_lines(self)
+    
+    def scroll_into_view(self) -> None:
+        self._block.scroll_into_view(self)
 
 
 class CodeLineGroup:
@@ -54,6 +65,11 @@ class CodeLineGroup:
     
     def __neg__(self) -> CodeLineGroup:
         self.remove()
+        return self
+    
+    def __invert__(self) -> CodeLineGroup:
+        self.scroll_into_view()
+        return self
     
     def __rshift__(self, *strings: str) -> list[CodeLine]:
         return self.last_line.append_lines(*strings)
@@ -71,6 +87,9 @@ class CodeLineGroup:
     
     def remove(self) -> None:
         self._block.remove_lines(*self._lines)
+    
+    def scroll_into_view(self) -> None:
+        self._block.scroll_into_view(self.first_line, self.last_line)
     
 
 from .codeblock import CodeBlock
