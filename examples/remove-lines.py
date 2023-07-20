@@ -3,7 +3,7 @@ from canim import code_animation, CodeScene
 
 @code_animation
 def remove_lines(scene: CodeScene):
-    code = scene(-6, 3)
+    code = scene.code(small=True)
     line1, *_ = code >> '''
         Line 1
         Line 2

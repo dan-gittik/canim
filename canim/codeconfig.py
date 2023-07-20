@@ -1,36 +1,50 @@
-class CodeConfig:
+from __future__ import annotations
 
-    default_font = 'Monospace'
-    default_font_size = 20
-    default_line_gap = 0.25
-    default_typing_speed = 0.1
-    default_slide_speed = 0.5
-    default_voiceover = False
+from .utils import Config
 
-    def __init__(
-            self,
-            font: str = None,
-            font_size: int = None,
-            line_gap: float = None,
-            typing_speed: float = None,
-            slide_speed: float = None,
-            voiceover: bool = None,
-    ):
-        if font is None:
-            font = self.default_font
-        if font_size is None:
-            font_size = self.default_font_size
-        if line_gap is None:
-            line_gap = self.default_line_gap
-        if typing_speed is None:
-            typing_speed = self.default_typing_speed
-        if slide_speed is None:
-            slide_speed = self.default_slide_speed
-        if voiceover is None:
-            voiceover = self.default_voiceover
-        self.font = font
-        self.font_size = font_size
-        self.line_gap = line_gap
-        self.typing_speed = typing_speed
-        self.slide_speed = slide_speed
-        self.voiceover = voiceover
+
+class CodeConfig(Config):
+    small = False
+    large_width = 12
+    large_height = 6
+    small_width = 8
+    small_height = 4
+    typing_speed = 0.1
+    slide_speed = 0.5
+    voiceover = False
+
+    @property
+    def width(self) -> float:
+        return self.small_width if self.small else self.large_width
+
+    @property
+    def height(self) -> float:
+        return self.small_height if self.small else self.large_height
+
+    class style(Config):
+        font = 'Monospace'
+        font_size = 20
+        font_color = '#000000'
+        line_gap = 0.25
+        background_color = '#ffffff'
+        window_color = '#ffffff'
+        window_border_color = '#000000'
+        window_border_width = 1
+        window_padding = 0.25
+        navbar_height = 0.5
+        navbar_color = '#888888'
+        controls_color = '#ffffff'
+
+        @property
+        def x_padding(self) -> float:
+            return 0
+        
+        @property
+        def y_padding(self) -> float:
+            return 0
+
+        def initialize(self, scene: CodeScene, animate: bool):
+            pass
+    
+
+from .codescene import CodeScene

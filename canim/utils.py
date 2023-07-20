@@ -1,3 +1,7 @@
+from __future__ import annotations
+from typing import Any
+
+import inspect
 import re
 
 
@@ -22,3 +26,39 @@ def split_lines(string: str) -> list[str]:
             indent = len(whitespace) - first_indent
             lines.append(' ' * indent + content)
     return lines
+
+
+class Config:
+
+    def __init__(self, parent: Config = None, config_dict: dict[str, Any] = None, /, **config: Any):
+        if config_dict is not None:
+            config.update(config_dict)
+        fields = {}
+        for cls in self.__class__.__mro__:
+            for key, value in cls.__dict__.items():
+                if key in fields or key.startswith('_'):
+                    continue
+                if inspect.isclass(value):
+                    fields[key] = value(self)
+                elif not hasattr(value, '__get__'):
+                    fields[key] = value
+        for key, value in fields.items():
+            setattr(self, key, value)
+        self.update(config)
+        self.parent = parent
+    
+    def __repr__(self):
+        return '{' + ', '.join(f'{key}: {value}' for key, value in self.__dict__.items() if key != 'parent') + '}'
+    
+    def update(self, config_dict: dict[str, Any] = None, /, **config: Any) -> None:
+        if config_dict is not None:
+            config.update(config_dict)
+        for key, value in config.items():
+            if '__' in key:
+                key, subkey = key.split('__', 1)
+                field = getattr(self, key)
+                setattr(field, subkey, value)
+            else:
+                setattr(self, key, value)
+                if isinstance(value, Config):
+                    value.parent = self
