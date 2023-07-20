@@ -37,13 +37,13 @@ class Window(CodeConfig.style):
         return self.parent
     
     @property
-    def x_padding(self) -> float:
+    def horizontal_padding(self) -> float:
         return self.window_padding
     
     @property
-    def y_padding(self) -> float:
+    def top_padding(self) -> float:
         return self.navbar_height + self.window_padding
-
+    
     def initialize(self, scene: CodeScene, animate: bool) -> None:
         window = Rectangle(
             height = self.config.height,

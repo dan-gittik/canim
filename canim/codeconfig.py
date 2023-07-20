@@ -36,11 +36,15 @@ class CodeConfig(Config):
         controls_color = '#ffffff'
 
         @property
-        def x_padding(self) -> float:
+        def horizontal_padding(self) -> float:
             return 0
         
         @property
-        def y_padding(self) -> float:
+        def top_padding(self) -> float:
+            return 0
+        
+        @property
+        def bottom_padding(self) -> float:
             return 0
 
         def initialize(self, scene: CodeScene, animate: bool):
