@@ -3,7 +3,7 @@ from canim import code_animation, CodeScene
 
 @code_animation
 def with_voiceover(scene: CodeScene):
-    code = scene(-6, 3, voiceover=True)
+    code = scene.code(voiceover=True)
     with code.voiceover('''
         Its a simple idea: we bind a name to a value,{1} like x to 1;
         and when we reference the name,{2} x, it resolves to the value,{3} 1.
