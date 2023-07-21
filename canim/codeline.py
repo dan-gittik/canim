@@ -21,6 +21,12 @@ class CodeLine:
         self.scroll_into_view()
         return self
     
+    def __lt__(self, strings: str|tuple[str]) -> CodeBlock:
+        if not isinstance(strings, tuple):
+            strings = strings,
+        self.replace(*strings)
+        return self
+    
     def __rshift__(self, *strings: str) -> list[CodeLine]:
         return self.append_lines(*strings)
 
@@ -36,19 +42,22 @@ class CodeLine:
     
     @property
     def number(self) -> None|int:
-        return self.index and self.index + 1
-
-    def prepend_lines(self, *strings: str) -> CodeLine:
+        return self.index + 1 if self.index is not None else None
+    
+    def prepend_lines(self, *strings: str) -> list[CodeLine]:
         if self.index == 0:
             self._block.prepend_lines(*strings)
         else:
             return self._block.insert_lines(self.index, *strings)
    
-    def append_lines(self, *strings: str) -> CodeLine:
+    def append_lines(self, *strings: str) -> list[CodeLine]:
         return self._block.insert_lines(self.index + 1, *strings)
         
     def remove(self) -> None:
-        self._block.remove_lines(self)
+        self._block.remove_lines([self])
+    
+    def replace(self, *strings: str) -> list[CodeLine]:
+        return self._block.replace_lines([self], *strings)
     
     def scroll_into_view(self) -> None:
         self._block.scroll_into_view(self)
@@ -59,9 +68,15 @@ class CodeLineGroup:
     def __init__(self, block: CodeBlock, lines: list[CodeLine]):
         self._block = block
         self._lines = lines
+        self._lines.sort(key=lambda line: line.index)
     
     def __repr__(self):
         return f'<line group: {", ".join(str(line.number) for line in self._lines)}>'
+    
+    def __lt__(self, strings: str|tuple[str]):
+        if not isinstance(strings, tuple):
+            strings = strings,
+        return self.replace(*strings)
     
     def __neg__(self) -> CodeLineGroup:
         self.remove()
@@ -72,24 +87,19 @@ class CodeLineGroup:
         return self
     
     def __rshift__(self, *strings: str) -> list[CodeLine]:
-        return self.last_line.append_lines(*strings)
+        return self._lines[-1].append_lines(*strings)
     
     def __lshift__(self, *strings: str) -> list[CodeLine]:
-        return self.first_line.prepend_lines(*strings)
-    
-    @property
-    def first_line(self) -> CodeLine:
-        return min(self._lines, key=lambda line: line.index)
-    
-    @property
-    def last_line(self) -> CodeLine:
-        return max(self._lines, key=lambda line: line.index)
+        return self._lines[0].prepend_lines(*strings)
     
     def remove(self) -> None:
-        self._block.remove_lines(*self._lines)
+        self._block.remove_lines(self._lines)
+    
+    def replace(self, *strings: str) -> None:
+        self._block.replace_lines(self._lines, *strings)
     
     def scroll_into_view(self) -> None:
-        self._block.scroll_into_view(self.first_line, self.last_line)
+        self._block.scroll_into_view(self._lines[0], self._lines[-1])
     
 
 from .codeblock import CodeBlock
