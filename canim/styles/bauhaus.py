@@ -33,6 +33,7 @@ class Bauhaus(Window):
     navbar_color = '#629ebb'
     controls_color = '#252525'
     border_offset = 0.1
+    z_range = 5
 
     @property
     def config(self) -> CodeConfig:
@@ -42,7 +43,10 @@ class Bauhaus(Window):
     def top_padding(self) -> float:
         return super().top_padding + self.border_offset
 
-    def initialize(self, scene: CodeScene, animate: bool) -> None:
+    def initialize(self, scene: CodeScene, animate: bool, z_index: int = None) -> None:
+        if z_index is None:
+            z_index = 0
+        z_index *= self.z_range
         window = Rectangle(
             height = self.config.height,
             width = self.config.width,
@@ -57,7 +61,7 @@ class Bauhaus(Window):
             fill_color = self.background_color,
             fill_opacity = 1,
         )
-        overflow_top.z_index = 1
+        overflow_top.z_index = z_index + 1
         overflow_top.next_to(window, UP, buff=0)
         overflow_bottom = overflow_top.copy()
         overflow_bottom.next_to(window, DOWN, buff=0)
@@ -67,7 +71,7 @@ class Bauhaus(Window):
             color = self.window_border_color,
             stroke_width = self.window_border_width,
         )
-        border.z_index = 2
+        border.z_index = z_index + 2
         border.align_to(window, UL)
         navbar = Rectangle(
             height = self.navbar_height,
@@ -77,7 +81,7 @@ class Bauhaus(Window):
             fill_color = self.navbar_color,
             fill_opacity = 1,
         )
-        navbar.z_index = 3
+        navbar.z_index = z_index + 3
         navbar.align_to(window, UL)
         button_size = self.navbar_height / 7
         button1 = Circle(
@@ -87,7 +91,7 @@ class Bauhaus(Window):
             fill_color = self.window_color,
             fill_opacity = 1,
         )
-        button1.z_index = 4
+        button1.z_index = z_index + 4
         button2 = button1.copy()
         button3 = button1.copy()
         button1.align_to(navbar, UR).shift(DOWN * button_size * 2.5, LEFT * button_size * 3)

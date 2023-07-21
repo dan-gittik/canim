@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import ContextManager, Pattern
 
 from manim import Mobject
 
@@ -12,6 +13,14 @@ class CodeLine:
     
     def __repr__(self):
         return f'<line {self.number or "*"}: {self.text}>'
+
+    def __enter__(self):
+        self._context = self.highlight()
+        self._context.__enter__()
+        return self
+    
+    def __exit__(self, exception, error, traceback):
+        return self._context.__exit__(exception, error, traceback)
     
     def __neg__(self) -> CodeBlock:
         self.remove()
@@ -26,7 +35,10 @@ class CodeLine:
             strings = strings,
         self.replace(*strings)
         return self
-    
+
+    def __mul__(self, pattern: str|Pattern) -> ContextManager[None]:
+        return self.highlight(pattern=pattern)
+ 
     def __rshift__(self, *strings: str) -> list[CodeLine]:
         return self.append_lines(*strings)
 
@@ -61,6 +73,12 @@ class CodeLine:
     
     def scroll_into_view(self) -> None:
         self._block.scroll_into_view(self)
+    
+    def highlight(self, pattern: str|Pattern = None) -> ContextManager[None]:
+        if pattern is not None:
+            return self._block.highlight_pattern(pattern, [self])
+        else:
+            return self._block.highlight_lines([self], pattern=pattern)
 
 
 class CodeLineGroup:
@@ -69,9 +87,18 @@ class CodeLineGroup:
         self._block = block
         self._lines = lines
         self._lines.sort(key=lambda line: line.index)
+        self._context: ContextManager[None] = []
     
     def __repr__(self):
         return f'<line group: {", ".join(str(line.number) for line in self._lines)}>'
+    
+    def __enter__(self):
+        self._context = self.highlight()
+        self._context.__enter__()
+        return self
+    
+    def __exit__(self, exception, error, traceback):
+        return self._context.__exit__(exception, error, traceback)
     
     def __lt__(self, strings: str|tuple[str]):
         if not isinstance(strings, tuple):
@@ -85,6 +112,9 @@ class CodeLineGroup:
     def __invert__(self) -> CodeLineGroup:
         self.scroll_into_view()
         return self
+    
+    def __mul__(self, pattern: str|Pattern) -> ContextManager[None]:
+        return self.highlight(pattern=pattern)
     
     def __rshift__(self, *strings: str) -> list[CodeLine]:
         return self._lines[-1].append_lines(*strings)
@@ -100,6 +130,12 @@ class CodeLineGroup:
     
     def scroll_into_view(self) -> None:
         self._block.scroll_into_view(self._lines[0], self._lines[-1])
+    
+    def highlight(self, pattern: str|Pattern = None) -> ContextManager[None]:
+        if pattern is not None:
+            return self._block.highlight_pattern(pattern, self._lines)
+        else:
+            return self._block.highlight_lines(self._lines)
     
 
 from .codeblock import CodeBlock

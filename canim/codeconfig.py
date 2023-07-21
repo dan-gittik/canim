@@ -10,7 +10,7 @@ class CodeConfig(Config):
     small_width = 8
     small_height = 4
     typing_speed = 0.1
-    slide_speed = 0.5
+    transition_speed = 0.5
     voiceover = False
 
     @property
@@ -34,6 +34,10 @@ class CodeConfig(Config):
         navbar_height = 0.5
         navbar_color = '#888888'
         controls_color = '#ffffff'
+        dimmed_opacity = 0.25
+        highlight_color = '#ffffaa'
+        highlight_padding = 0.2
+        z_range = 0
 
         @property
         def horizontal_padding(self) -> float:
