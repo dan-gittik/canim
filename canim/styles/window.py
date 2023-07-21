@@ -31,6 +31,7 @@ class Window(CodeConfig.style):
     navbar_height = 0.5
     navbar_color = '#888888'
     controls_color = '#ffffff'
+    z_range = 5
 
     @property
     def config(self) -> CodeConfig:
@@ -44,7 +45,8 @@ class Window(CodeConfig.style):
     def top_padding(self) -> float:
         return self.navbar_height + self.window_padding
     
-    def initialize(self, scene: CodeScene, animate: bool) -> None:
+    def initialize(self, scene: CodeScene, animate: bool, z_index: int) -> None:
+        z_index *= self.z_range
         window = Rectangle(
             height = self.config.height,
             width = self.config.width,
@@ -59,7 +61,7 @@ class Window(CodeConfig.style):
             fill_color = self.background_color,
             fill_opacity = 1,
         )
-        overflow_top.z_index = 1
+        overflow_top.z_index = z_index + 1
         overflow_top.next_to(window, UP, buff=0)
         overflow_bottom = overflow_top.copy()
         overflow_bottom.next_to(window, DOWN, buff=0)
@@ -69,7 +71,7 @@ class Window(CodeConfig.style):
             color = self.window_border_color,
             stroke_width = self.window_border_width,
         )
-        border.z_index = 2
+        border.z_index = z_index + 2
         border.align_to(window, UL)
         navbar = Rectangle(
             height = self.navbar_height,
@@ -79,7 +81,7 @@ class Window(CodeConfig.style):
             fill_color = self.navbar_color,
             fill_opacity = 1,
         )
-        navbar.z_index = 3
+        navbar.z_index = z_index + 3
         navbar.align_to(window, UL)
         button_size = self.navbar_height / 7
         button1 = Circle(
@@ -89,7 +91,7 @@ class Window(CodeConfig.style):
             fill_color = self.window_color,
             fill_opacity = 1,
         )
-        button1.z_index = 4
+        button1.z_index = z_index + 4
         button2 = button1.copy()
         button3 = button1.copy()
         button1.align_to(navbar, UR).shift(DOWN * button_size * 2.5, LEFT * button_size * 3)
