@@ -96,8 +96,6 @@ class Window(CodeConfig.style):
         button2.align_to(button1, UL).shift(LEFT * button_size * 4)
         button3.align_to(button2, UL).shift(LEFT * button_size * 4)
         controls = Group(border, navbar, button1, button2, button3)
-        if self.background_color:
-            scene.camera.background_color = self.background_color
         if animate:
             scene.play(Create(border), run_time=0.7)
             scene.play(FadeIn(window), FadeIn(navbar), run_time=0.3)
