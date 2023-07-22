@@ -1,11 +1,16 @@
 from __future__ import annotations
 from typing import Any
 
+import datetime as dt
 import inspect
 import re
 
 
 indent_regex = re.compile(r'^(\s*)(.*)$')
+
+
+def log(message: str) -> None:
+    print(f'[{dt.datetime.now()}] {message}')
 
 
 def split_indent(string: str) -> tuple[str, str]:
@@ -48,7 +53,7 @@ class Config:
         self.parent = parent
     
     def __repr__(self):
-        return '{' + ', '.join(f'{key}: {value}' for key, value in self.__dict__.items() if key != 'parent') + '}'
+        return f'<config {self.as_dict()!r}>'
     
     def update(self, config_dict: dict[str, Any] = None, /, **config: Any) -> None:
         if config_dict is not None:
@@ -62,3 +67,6 @@ class Config:
                 setattr(self, key, value)
                 if isinstance(value, Config):
                     value.parent = self
+    
+    def as_dict(self) -> dict[str, Any]:
+        return {key: value for key, value in self.__dict__.items() if key != 'parent'}

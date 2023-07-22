@@ -2,3 +2,4 @@ manim
 manim-voiceover
 manim-voiceover[recorder]
 manim-voiceover[transcribe]
+pygments
