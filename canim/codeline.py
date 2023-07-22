@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import ContextManager, Pattern
+from typing import Any, ContextManager, Pattern
 
 from manim import Mobject
 
@@ -10,6 +10,7 @@ class CodeLine:
         self.text = text
         self._block = block
         self._mobject: Mobject = None
+        self._stash: dict[str, Any] = {}
     
     def __repr__(self):
         return f'<line {self.number or "*"}: {self.text}>'
@@ -22,6 +23,16 @@ class CodeLine:
     def __exit__(self, exception, error, traceback):
         return self._context.__exit__(exception, error, traceback)
     
+    def __lt__(self, strings: str|tuple[str]) -> CodeBlock:
+        if not isinstance(strings, tuple):
+            strings = strings,
+        self.replace(*strings)
+        return self
+    
+    def __call__(self, **stash: Any) -> CodeLine:
+        self._stash = stash
+        return self
+
     def __neg__(self) -> CodeBlock:
         self.remove()
         return self
@@ -30,20 +41,18 @@ class CodeLine:
         self.scroll_into_view()
         return self
     
-    def __lt__(self, strings: str|tuple[str]) -> CodeBlock:
-        if not isinstance(strings, tuple):
-            strings = strings,
-        self.replace(*strings)
-        return self
-
     def __mul__(self, pattern: str|Pattern) -> ContextManager[None]:
-        return self.highlight(pattern=pattern)
+        return self.highlight(pattern)
  
     def __rshift__(self, *strings: str) -> list[CodeLine]:
-        return self.append_lines(*strings)
+        lines = self.append_lines(*strings, **self._stash)
+        self._stash.clear()
+        return lines
 
     def __lshift__(self, *strings: str) -> list[CodeLine]:
-        return self.prepend_lines(*strings)
+        lines = self.prepend_lines(*strings, **self._stash)
+        self._stash.clear()
+        return lines
 
     @property
     def index(self) -> None|int:
@@ -56,14 +65,14 @@ class CodeLine:
     def number(self) -> None|int:
         return self.index + 1 if self.index is not None else None
     
-    def prepend_lines(self, *strings: str) -> list[CodeLine]:
+    def prepend_lines(self, *strings: str, raw: bool = None) -> list[CodeLine]:
         if self.index == 0:
-            self._block.prepend_lines(*strings)
+            self._block.prepend_lines(*strings, raw=raw)
         else:
-            return self._block.insert_lines(self.index, *strings)
+            return self._block.insert_lines(self.index, *strings, raw=raw)
    
-    def append_lines(self, *strings: str) -> list[CodeLine]:
-        return self._block.insert_lines(self.index + 1, *strings)
+    def append_lines(self, *strings: str, raw: bool = None) -> list[CodeLine]:
+        return self._block.insert_lines(self.index + 1, *strings, raw=raw)
         
     def remove(self) -> None:
         self._block.remove_lines([self])
@@ -88,6 +97,7 @@ class CodeLineGroup:
         self._lines = lines
         self._lines.sort(key=lambda line: line.index)
         self._context: ContextManager[None] = []
+        self._stash: dict[str, Any] = {}
     
     def __repr__(self):
         return f'<line group: {", ".join(str(line.number) for line in self._lines)}>'
@@ -136,6 +146,6 @@ class CodeLineGroup:
             return self._block.highlight_pattern(pattern, self._lines)
         else:
             return self._block.highlight_lines(self._lines)
-    
+
 
 from .codeblock import CodeBlock

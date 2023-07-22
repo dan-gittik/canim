@@ -10,9 +10,10 @@ from manim import (
     DOWN,
     LEFT,
     RIGHT,
-    Text,
+    MarkupText,
     Rectangle,
     Animation,
+    FadeIn,
     FadeOut,
     LaggedStart,
     AddTextLetterByLetter,
@@ -36,12 +37,15 @@ class CodeBlock:
             *,
             animate: bool = None,
             z_index: int = None,
+            language: str = None,
     ):
         if z_index is None:
             z_index = 0
         self.config = config
         self._scene = scene
+        self._syntax_highlighter = SyntaxHighligher(language, config.style.syntax) if language else None
         self._lines: list[CodeLine] = []
+        self._stash: dict[str, Any] = {}
         if self.config.voiceover:
             self._scene.set_speech_service(RecorderService())
         if self.style.background_color:
@@ -63,14 +67,26 @@ class CodeBlock:
                 lines.extend(self._lines[index])
         return CodeLineGroup(self, lines)
     
+    def __call__(self, **stash: dict[str, Any]) -> CodeBlock:
+        self._stash = stash
+        return self
+    
     def __rshift__(self, *strings: str) -> list[CodeLine]:
-        return self.append_lines(*strings)
+        lines = self.append_lines(*strings, **self._stash)
+        self._stash.clear()
+        return lines
     
     def __lshift__(self, *strings: str) -> list[CodeLine]:
-        return self.prepend_lines(*strings)
+        lines = self.prepend_lines(*strings, **self._stash)
+        self._stash.clear()
+        return lines
     
     def __matmul__(self, bookmark: Any) -> None:
         self._scene.wait_until_bookmark(str(bookmark))
+    
+    def __irshift__(self, *strings: str) -> CodeBlock:
+        self.append_lines(*strings, raw=True, at_once=True)
+        return self
     
     @contextlib.contextmanager
     def voiceover(self, text: str) -> ContextManager[VoiceoverTracker]:
@@ -82,27 +98,49 @@ class CodeBlock:
     def style(self) -> CodeConfig.style:
         return self.config.style
 
-    def insert_lines(self, index: int, *strings: str) -> list[CodeLine]:
+    def insert_lines(
+            self,
+            index: int,
+            *strings: str,
+            raw: bool = None,
+            at_once: bool = None,
+    ) -> list[CodeLine]:
         if not strings:
             return
         if index > len(self._lines):
             index = len(self._lines)
-        lines = self._create_lines(index, strings)
+        lines = self._create_lines(index, strings, raw=raw)
         scroll = self._find_scroll_for(lines[0], lines[-1])
         self._animate_slide(scroll)
         for line in lines:
             line._mobject.shift(scroll * UP)
         height_diff = -self._height(*lines)
         self._animate_slide(height_diff, self._lines[index:])
-        self._animate_typing(lines)
+        self._animate_insert(lines, at_once=at_once)
         self._insert(index, lines)
         return lines
     
-    def prepend_lines(self, *strings: str) -> list[CodeLine]:
-        return self.insert_lines(0, *strings)
+    def prepend_lines(
+            self,
+            *strings: str,
+            raw: bool = None,
+            at_once: bool = None,
+    ) -> list[CodeLine]:
+        return self.insert_lines(0, *strings,
+            raw = raw,
+            at_once = at_once,
+        )
     
-    def append_lines(self, *strings: str) -> list[CodeLine]:
-        return self.insert_lines(len(self._lines), *strings)
+    def append_lines(
+            self,
+            *strings: str,
+            raw: bool = None,
+            at_once: bool = None
+    ) -> list[CodeLine]:
+        return self.insert_lines(len(self._lines), *strings,
+            raw = raw,
+            at_once = at_once,
+        )
     
     def remove_lines(self, lines: list[CodeLine]) -> None:
         if not lines:
@@ -110,17 +148,23 @@ class CodeBlock:
         self._animate_remove(lines)
         self._delete(lines)
     
-    def replace_lines(self, lines: list[CodeLine], *strings: str) -> None:
+    def replace_lines(
+            self,
+            lines: list[CodeLine],
+            *strings: str,
+            raw: bool = None,
+            at_once: bool = None,
+    ) -> None:
         if not lines or not strings:
             return
         index = lines[0].index
-        new_lines = self._create_lines(index, strings)
+        new_lines = self._create_lines(index, strings, raw=raw)
         scroll = self._find_scroll_for(new_lines[0], new_lines[-1])
         self._animate_slide(scroll)
         for line in lines:
             line._mobject.shift(scroll * UP)
         self._animate_replace(index, lines, new_lines)
-        self._animate_typing(new_lines)
+        self._animate_insert(new_lines, at_once=at_once)
         self._insert(index, new_lines)
         self._delete(lines)
         return new_lines
@@ -163,17 +207,19 @@ class CodeBlock:
         for line in lines:
             self._lines.remove(line)
 
-    def _create_text(self, text: str) -> Text:
-        text = Text(
+    def _create_text(self, text: str, raw: bool = None) -> MarkupText:
+        if self._syntax_highlighter and not raw:
+            text = self._syntax_highlighter.highlight(text)
+        mobject = MarkupText(
             text = text,
             font = self.style.font,
             font_size = self.style.font_size,
             color = self.style.font_color,
         )
-        text.z_index = self.z_index + 2
-        return text
+        mobject.z_index = self.z_index + 2
+        return mobject
 
-    def _create_lines(self, index: int, strings: list[str]) -> list[CodeLine]:
+    def _create_lines(self, index: int, strings: list[str], raw: bool = None) -> list[CodeLine]:
         lines: list[CodeLine] = []
         for string in strings:
             for text in split_lines(string):
@@ -181,7 +227,7 @@ class CodeBlock:
                 lines.append(line)
         prev_line: CodeLine = None
         for line_index, line in enumerate(lines, index):
-            mobject = self._create_text(line.text)
+            mobject = self._create_text(line.text, raw=raw)
             if line_index == 0:
                 if not self._lines:
                     x = -(self.config.width / 2) + self.style.horizontal_padding
@@ -210,10 +256,18 @@ class CodeBlock:
             return lower_limit - bottom
         return 0
 
-    def _animate_typing(self, lines: list[CodeLine]) -> None:
-        for line in lines:
-            duration = len(line.text) * self.config.typing_speed
-            self._scene.play(AddTextLetterByLetter(line._mobject), run_time=duration)
+    def _animate_insert(self, lines: list[CodeLine], at_once: bool = None) -> None:
+        if not lines:
+            return
+        if at_once:
+            animation: list[Animation] = []
+            for line in lines:
+                animation.append(FadeIn(line._mobject))
+            self._scene.play(LaggedStart(*animation, lag_ratio=0.2, run_time=self.config.transition_speed))
+        else:
+            for line in lines:
+                duration = len(line.text.replace(' ', '')) * self.config.typing_speed
+                self._scene.play(AddTextLetterByLetter(line._mobject), run_time=duration)
 
     def _animate_slide(self, slide: float, lines: list[CodeLine] = None) -> None:
         if lines is None:
@@ -291,3 +345,4 @@ class CodeBlock:
 from .codeconfig import CodeConfig
 from .codeline import CodeLine, CodeLineGroup
 from .codescene import CodeScene
+from .syntaxhighlighter import SyntaxHighligher

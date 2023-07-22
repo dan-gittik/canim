@@ -8,9 +8,6 @@ class CodeScene(VoiceoverScene):
 
     default_animate = False
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def __repr__(self):
         return f'<code scene {self.__class__.__name__!r}>'
     
@@ -20,13 +17,14 @@ class CodeScene(VoiceoverScene):
             /,
             *,
             animate: bool = None,
+            language: str = None,
             **config: Any,
     ) -> CodeBlock:
         if config_obj is None:
             config_obj = CodeConfig(**config)
         if animate is None:
             animate = self.default_animate
-        return CodeBlock(self, config_obj, animate=animate)
+        return CodeBlock(self, config_obj, animate=animate, language=language)
 
 
 from .codeblock import CodeBlock
