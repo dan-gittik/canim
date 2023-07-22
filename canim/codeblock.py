@@ -71,6 +71,10 @@ class CodeBlock:
         self._stash = stash
         return self
     
+    def __neg__(self) -> CodeBlock:
+        self.clear()
+        return self
+    
     def __rshift__(self, *strings: str) -> list[CodeLine]:
         lines = self.append_lines(*strings, **self._stash)
         self._stash.clear()
@@ -154,7 +158,7 @@ class CodeBlock:
             *strings: str,
             raw: bool = None,
             at_once: bool = None,
-    ) -> None:
+    ) -> list[CodeLine]:
         if not lines or not strings:
             return
         index = lines[0].index
@@ -168,7 +172,35 @@ class CodeBlock:
         self._insert(index, new_lines)
         self._delete(lines)
         return new_lines
-
+    
+    def enclose_lines(
+            self,
+            lines: list[CodeLine],
+            before: str,
+            after: str,
+            indent: int = None,
+            raw: bool = None,
+            at_once: bool = None,
+    ) -> list[CodeLine]:
+        if not lines:
+            return
+        before_index = lines[0].index
+        before_lines = self._create_lines(before_index, before, raw=raw)
+        after_index = lines[-1].index + 1
+        after_lines = self._create_lines(after_index, after, raw=raw)
+        scroll = self._find_scroll_for(before_lines[0], after_lines[-1])
+        self._animate_slide(scroll)
+        for line in before_lines:
+            line._mobject.shift(scroll * UP)
+        for line in after_lines:
+            line._mobject.shift(scroll * UP)
+        self._animate_enclose(before_index, after_index, before_lines, after_lines, indent=indent)
+        new_lines = [*before_lines, *after_lines]
+        self._animate_insert(new_lines, at_once=at_once)
+        self._insert(before_index, before_lines)
+        self._insert(after_index, after_lines)
+        return new_lines
+    
     def scroll_into_view(self, first_line: CodeLine, last_line: CodeLine = None) -> None:
         if last_line is None:
             last_line = first_line
@@ -197,6 +229,9 @@ class CodeBlock:
         with self._animate_highlights(pattern, lines):
             yield
         
+    def clear(self) -> None:
+        self.remove_lines(self._lines)
+        
     def _height(self, *lines: CodeLine) -> float:
         return sum(line._mobject.height + self.style.line_gap for line in lines)
     
@@ -204,8 +239,7 @@ class CodeBlock:
         self._lines[index:index] = lines
 
     def _delete(self, lines: list[CodeLine]) -> None:
-        for line in lines:
-            self._lines.remove(line)
+        self._lines = [line for line in self._lines if line not in lines]
 
     def _create_text(self, text: str, raw: bool = None) -> MarkupText:
         if self._syntax_highlighter and not raw:
@@ -263,22 +297,11 @@ class CodeBlock:
             animation: list[Animation] = []
             for line in lines:
                 animation.append(FadeIn(line._mobject))
-            self._scene.play(LaggedStart(*animation, lag_ratio=0.2, run_time=self.config.transition_speed))
+            self._scene.play(*animation, run_time=self.config.transition_speed)
         else:
             for line in lines:
                 duration = len(line.text.replace(' ', '')) * self.config.typing_speed
                 self._scene.play(AddTextLetterByLetter(line._mobject), run_time=duration)
-
-    def _animate_slide(self, slide: float, lines: list[CodeLine] = None) -> None:
-        if lines is None:
-            lines = self._lines
-        if not slide or not lines or not self._lines:
-            return
-        animation: list[Animation] = []
-        for line in lines:
-            animation.append(line._mobject.animate.shift(slide * UP))
-        if animation:
-            self._scene.play(*animation, run_time=self.config.transition_speed)
 
     def _animate_remove(self, lines: list[CodeLine]) -> None:
         height_diff = 0
@@ -304,6 +327,40 @@ class CodeBlock:
         if animation:
             self._scene.play(*animation, run_time=self.config.transition_speed)
     
+    def _animate_enclose(
+            self,
+            before_index: int,
+            after_index: int,
+            before_lines: list[CodeLine],
+            after_lines: list[CodeLine],
+            indent: int = None,
+    ):
+        height_diff = -self._height(*before_lines)
+        animation: list[Animation] = []
+        for line in self._lines[before_index:after_index]:
+            indent_diff = line._mobject.width / len(line.text) * indent if indent else 0
+            if height_diff or indent_diff:
+                animation.append(line._mobject.animate.shift(height_diff * UP + indent_diff * RIGHT))
+        for line in after_lines:
+            line._mobject.shift(height_diff * UP)
+        height_diff -= self._height(*after_lines)
+        for line in self._lines[after_index:]:
+            if height_diff:
+                animation.append(line._mobject.animate.shift(height_diff * UP))
+        if animation:
+            self._scene.play(*animation, run_time=self.config.transition_speed)
+ 
+    def _animate_slide(self, slide: float, lines: list[CodeLine] = None) -> None:
+        if lines is None:
+            lines = self._lines
+        if not slide or not lines or not self._lines:
+            return
+        animation: list[Animation] = []
+        for line in lines:
+            animation.append(line._mobject.animate.shift(slide * UP))
+        if animation:
+            self._scene.play(*animation, run_time=self.config.transition_speed)
+
     def _animate_opacity(self, opacity: float, lines: list[CodeLine] = None) -> None:
         if not lines:
             lines = self._lines
