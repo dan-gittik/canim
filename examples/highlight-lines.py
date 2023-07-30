@@ -1,5 +1,5 @@
 from canim import code_animation, CodeScene
-from canim.styles import Window
+from canim.themes import Window
 
 
 @code_animation

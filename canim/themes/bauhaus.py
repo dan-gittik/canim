@@ -35,7 +35,7 @@ class Bauhaus(Window):
     border_offset = 0.1
     z_range = 5
 
-    class syntax(CodeConfig.style.syntax):
+    class syntax(CodeConfig.theme.syntax):
         color1 = '#629ebb'
         color2 = '#fd4f2a'
         color3 = '#fea027'
@@ -51,7 +51,8 @@ class Bauhaus(Window):
     def top_padding(self) -> float:
         return super().top_padding + self.border_offset
 
-    def initialize(self, scene: CodeScene, animate: bool, z_index: int) -> None:
+    def init(self, scene: CodeScene) -> None:
+        super().init(scene)
         z_index *= self.z_range
         window = Rectangle(
             height = self.config.height,

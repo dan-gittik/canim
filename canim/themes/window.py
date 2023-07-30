@@ -3,7 +3,6 @@ from manim import (
     UL,
     UR,
     DOWN,
-    DL,
     LEFT,
     Group,
     Rectangle,
@@ -17,7 +16,7 @@ from ..codescene import CodeScene
 from ..codeconfig import CodeConfig
 
 
-class Window(CodeConfig.style):
+class Window(CodeConfig.theme):
     font = 'Consolas'
     font_size = 22
     font_color = '#000000'
@@ -45,7 +44,8 @@ class Window(CodeConfig.style):
     def top_padding(self) -> float:
         return self.navbar_height + self.window_padding
     
-    def initialize(self, scene: CodeScene, animate: bool, z_index: int) -> None:
+    def init(self, scene: CodeScene) -> None:
+        super().init(scene)
         z_index *= self.z_range
         window = Rectangle(
             height = self.config.height,

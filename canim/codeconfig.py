@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from .utils import Config
 
 
@@ -10,6 +12,10 @@ class CodeConfig(Config):
     large_height = 6
     small_width = 8
     small_height = 4
+    language: str = None
+    prompts: list[str] = None
+    syntax_highlighting: bool = None
+    animation: bool = False
     typing_speed = 0.1
     transition_speed = 0.5
     voiceover = False
@@ -21,8 +27,14 @@ class CodeConfig(Config):
     @property
     def height(self) -> float:
         return self.small_height if self.small else self.large_height
+    
+    @property
+    def prompt_pattern(self) -> str:
+        if not self.prompts:
+            return ''
+        return '|'.join(re.escape(prompt) for prompt in prompts)
 
-    class style(Config):
+    class theme(Config):
         font = 'Monospace'
         font_size = 20
         font_color = '#000000'
@@ -52,8 +64,9 @@ class CodeConfig(Config):
         def bottom_padding(self) -> float:
             return 0
 
-        def initialize(self, scene: CodeScene, animate: bool, z_index: int):
-            pass
+        def init(self, scene: CodeScene):
+            if self.background_color:
+                scene.camera.background_color = self.background_color
 
         class syntax(Config):
             color1 = '#0000ff'

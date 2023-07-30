@@ -1,5 +1,5 @@
 from canim import code_animation, CodeScene
-from canim.styles import Bauhaus
+from canim.themes import Bauhaus
 
 from manim import UP
 

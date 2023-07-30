@@ -2,21 +2,19 @@ from __future__ import annotations
 from typing import Any, ContextManager, Pattern
 
 import contextlib
+from itertools import zip_longest
 import re
 
 from manim import (
     UP,
     UL,
-    DOWN,
     LEFT,
     RIGHT,
     MarkupText,
     Rectangle,
     Animation,
-    FadeIn,
     FadeOut,
     LaggedStart,
-    AddTextLetterByLetter,
 )
 from manim_voiceover import VoiceoverTracker
 from manim_voiceover.services.recorder import RecorderService
@@ -29,29 +27,20 @@ bookmark_regex = re.compile(r'\{(.*?)\}')
 
 class CodeBlock:
 
-    
-    def __init__(
-            self,
-            scene: CodeScene,
-            config: CodeConfig,
-            *,
-            animate: bool = None,
-            z_index: int = None,
-            language: str = None,
-    ):
-        if z_index is None:
-            z_index = 0
+    def __init__(self, scene: CodeScene, config: CodeConfig):
+        self.scene = scene
         self.config = config
-        self._scene = scene
-        self._syntax_highlighter = SyntaxHighligher(language, config.style.syntax) if language else None
-        self._lines: list[CodeLine] = []
+        self.lines: list[CodeLine] = []
         self._stash: dict[str, Any] = {}
+        self._transitions: list[Animation] = []
+        if config.language:
+            self._syntax_highlighter = SyntaxHighligher(config.language, config.theme.syntax)
+        else:
+            self._syntax_highlighter = None
+        self._font_alignment = FontAlignment(config.theme.font, config.theme.font_size)
         if self.config.voiceover:
-            self._scene.set_speech_service(RecorderService())
-        if self.style.background_color:
-            self._scene.camera.background_color = self.style.background_color
-        self.config.style.initialize(self._scene, animate=animate, z_index=z_index)
-        self.z_index = z_index + self.config.style.z_range
+            self.scene.set_speech_service(RecorderService())
+        self.config.theme.init(self.scene)
     
     def __repr__(self):
         return f'<code block: {self.config}>'
@@ -67,110 +56,154 @@ class CodeBlock:
                 lines.extend(self._lines[index])
         return CodeLineGroup(self, lines)
     
-    def __call__(self, **stash: dict[str, Any]) -> CodeBlock:
+    def __call__(self, **stash: Any) -> CodeBlock:
         self._stash = stash
         return self
     
     def __neg__(self) -> CodeBlock:
-        self.clear()
+        self.clear(**self._stash)
+        self._stash.clear()
         return self
     
-    def __rshift__(self, *strings: str) -> list[CodeLine]:
-        lines = self.append_lines(*strings, **self._stash)
+    def __rshift__(self, string: str) -> list[CodeLine]:
+        lines = self.append_lines(string, **self._stash)
         self._stash.clear()
         return lines
     
-    def __lshift__(self, *strings: str) -> list[CodeLine]:
-        lines = self.prepend_lines(*strings, **self._stash)
+    def __lshift__(self, string: str) -> list[CodeLine]:
+        lines = self.prepend_lines(string, **self._stash)
         self._stash.clear()
         return lines
     
-    def __matmul__(self, bookmark: Any) -> None:
-        self._scene.wait_until_bookmark(str(bookmark))
+    def __matmul__(self, bookmark: Any) -> CodeBlock:
+        self.scene.wait_until_bookmark(str(bookmark))
+        return self
     
-    def __irshift__(self, *strings: str) -> CodeBlock:
-        self.append_lines(*strings, raw=True, at_once=True)
+    def __irshift__(self, string: str) -> CodeBlock:
+        self.append_lines(string, plain=True)
         return self
     
     @contextlib.contextmanager
     def voiceover(self, text: str) -> ContextManager[VoiceoverTracker]:
         text = bookmark_regex.sub(r'<bookmark mark="\1" />', text)
-        with self._scene.voiceover(text=text) as tracker:
+        with self.scene.voiceover(text=text) as tracker:
             yield tracker
         
     @property
-    def style(self) -> CodeConfig.style:
-        return self.config.style
+    def theme(self) -> CodeConfig.theme:
+        return self.config.theme
+    
+    @property
+    def top(self) -> float:
+        return self.config.height / 2 - self.theme.top_padding
+    
+    @property
+    def bottom(self) -> float:
+        return -self.config.height / 2 + self.theme.bottom_padding
+    
+    @property
+    def left(self):
+        return -self.config.width / 2 + self.theme.horizontal_padding
+
+    def scroll_into_view(self, first_line: CodeLine, last_line: CodeLine = None) -> None:
+        self._animate_scroll_to_fit(first_line, last_line)
 
     def insert_lines(
             self,
             index: int,
             *strings: str,
-            raw: bool = None,
-            at_once: bool = None,
+            indent_lines: int|CodeLineGroup|list[CodeLine] = None,
+            indent_level: int = None,
+            indent_prompt: str = None,
+            plain: bool = None,
     ) -> list[CodeLine]:
-        if not strings:
+        lines = self._create_lines(*strings, plain=plain)
+        if not lines:
             return
-        if index > len(self._lines):
-            index = len(self._lines)
-        lines = self._create_lines(index, strings, raw=raw)
-        scroll = self._find_scroll_for(lines[0], lines[-1])
-        self._animate_slide(scroll)
-        for line in lines:
-            line._mobject.shift(scroll * UP)
-        height_diff = -self._height(*lines)
-        self._animate_slide(height_diff, self._lines[index:])
-        self._animate_insert(lines, at_once=at_once)
+        if index < 0:
+            index = 0
+        if index > len(self.lines):
+            index = len(self.lines)
+        if isinstance(indent_lines, int):
+            indent_lines = self.lines[index:index + indent_lines]
+        elif isinstance(indent_lines, CodeLineGroup):
+            indent_lines = indent_lines.lines
+        self._animate_insert(
+            insertions = {index: lines},
+            indent_lines = indent_lines,
+            indent_level = indent_level,
+            indent_prompt = indent_prompt,
+            plain = plain,
+        )
         self._insert(index, lines)
         return lines
-    
+
     def prepend_lines(
             self,
             *strings: str,
-            raw: bool = None,
-            at_once: bool = None,
+            indent_lines: int|list[CodeLine] = None,
+            indent_level: int = None,
+            indent_prompt: str = None,
+            plain: bool = None,
     ) -> list[CodeLine]:
-        return self.insert_lines(0, *strings,
-            raw = raw,
-            at_once = at_once,
+        return self.insert_lines(
+            0,
+            *strings,
+            indent_lines = indent_lines,
+            indent_level = indent_level,
+            indent_prompt = indent_prompt,
+            plain = plain,
         )
     
     def append_lines(
             self,
             *strings: str,
-            raw: bool = None,
-            at_once: bool = None
+            indent_lines: int|list[CodeLine] = None,
+            indent_level: int = None,
+            indent_prompt: str = None,
+            plain: bool = None,
     ) -> list[CodeLine]:
-        return self.insert_lines(len(self._lines), *strings,
-            raw = raw,
-            at_once = at_once,
+        return self.insert_lines(
+            len(self.lines),
+            *strings,
+            indent_lines = indent_lines,
+            indent_level = indent_level,
+            indent_prompt = indent_prompt,
+            plain = plain,
         )
     
     def remove_lines(self, lines: list[CodeLine]) -> None:
         if not lines:
             return
         self._animate_remove(lines)
-        self._delete(lines)
+        self._remove(lines)
+    
+    def clear(self) -> None:
+        self.remove_lines(self.lines)
     
     def replace_lines(
             self,
             lines: list[CodeLine],
             *strings: str,
-            raw: bool = None,
-            at_once: bool = None,
+            indent_lines: int|list[CodeLine] = None,
+            indent_level: int = None,
+            indent_prompt: str = None,
+            plain: bool = None,
     ) -> list[CodeLine]:
-        if not lines or not strings:
+        new_lines = self._create_lines(*strings, plain=plain)
+        if not lines or not new_lines:
             return
         index = lines[0].index
-        new_lines = self._create_lines(index, strings, raw=raw)
-        scroll = self._find_scroll_for(new_lines[0], new_lines[-1])
-        self._animate_slide(scroll)
-        for line in lines:
-            line._mobject.shift(scroll * UP)
-        self._animate_replace(index, lines, new_lines)
-        self._animate_insert(new_lines, at_once=at_once)
+        self._animate_insert(
+            insertions = {index: new_lines},
+            replace_lines = lines,
+            indent_lines = indent_lines,
+            indent_level = indent_level,
+            indent_prompt = indent_prompt,
+            plain = plain,
+        )
         self._insert(index, new_lines)
-        self._delete(lines)
+        self._remove(lines)
         return new_lines
     
     def enclose_lines(
@@ -178,34 +211,28 @@ class CodeBlock:
             lines: list[CodeLine],
             before: str,
             after: str,
+            *,
             indent: int = None,
-            raw: bool = None,
-            at_once: bool = None,
+            prompt: str = None,
+            plain: bool = None,
     ) -> list[CodeLine]:
         if not lines:
             return
         before_index = lines[0].index
-        before_lines = self._create_lines(before_index, before, raw=raw)
+        before_lines = self._create_lines(before, plain=plain)
         after_index = lines[-1].index + 1
-        after_lines = self._create_lines(after_index, after, raw=raw)
-        scroll = self._find_scroll_for(before_lines[0], after_lines[-1])
-        self._animate_slide(scroll)
-        for line in before_lines:
-            line._mobject.shift(scroll * UP)
-        for line in after_lines:
-            line._mobject.shift(scroll * UP)
-        self._animate_enclose(before_index, after_index, before_lines, after_lines, indent=indent)
+        after_lines = self._create_lines(after, plain=plain)
         new_lines = [*before_lines, *after_lines]
-        self._animate_insert(new_lines, at_once=at_once)
+        self._animate_insert(
+            insertions = {before_index: before_lines, after_index: after_lines},
+            indent_lines = self.lines[before_index:after_index],
+            indent_level = indent,
+            indent_prompt = prompt,
+            plain = plain,
+        )
         self._insert(before_index, before_lines)
         self._insert(after_index, after_lines)
         return new_lines
-    
-    def scroll_into_view(self, first_line: CodeLine, last_line: CodeLine = None) -> None:
-        if last_line is None:
-            last_line = first_line
-        scroll = self._find_scroll_for(first_line, last_line)
-        self._animate_slide(scroll)
     
     @contextlib.contextmanager
     def highlight_lines(self, lines: list[CodeLine]) -> None:
@@ -229,177 +256,169 @@ class CodeBlock:
         with self._animate_highlights(pattern, lines):
             yield
         
-    def clear(self) -> None:
-        self.remove_lines(self._lines)
-        
-    def _height(self, *lines: CodeLine) -> float:
-        return sum(line._mobject.height + self.style.line_gap for line in lines)
+    def _add_transition(self, transition: Animation) -> None:
+        self._transitions.append(transition)
     
+    def _play_transitions(self, lag=None) -> None:
+        if not self._transitions:
+            return
+        if self.config.animation:
+            run_time = self.config.transition_speed
+        else:
+            run_time = 0
+        if lag:
+            self.scene.play(LaggedStart(*self._transitions, lag_ratio=lag, run_time=run_time))
+        else:
+            self.scene.play(*self._transitions, run_time=run_time)
+        self._transitions.clear()
+        
     def _insert(self, index: int, lines: list[CodeLine]) -> None:
-        self._lines[index:index] = lines
+        self.lines[index:index] = lines
 
-    def _delete(self, lines: list[CodeLine]) -> None:
-        self._lines = [line for line in self._lines if line not in lines]
-
-    def _create_text(self, text: str, raw: bool = None) -> MarkupText:
-        if self._syntax_highlighter and not raw:
-            text = self._syntax_highlighter.highlight(text)
-        mobject = MarkupText(
+    def _remove(self, lines: list[CodeLine]) -> None:
+        self.lines = [line for line in self.lines if line not in lines]
+    
+    def _create_text(self, text: str) -> MarkupText:
+        return MarkupText(
             text = text,
-            font = self.style.font,
-            font_size = self.style.font_size,
-            color = self.style.font_color,
+            font = self.theme.font,
+            font_size = self.theme.font_size,
+            color = self.theme.font_color,
         )
-        mobject.z_index = self.z_index + 2
-        return mobject
 
-    def _create_lines(self, index: int, strings: list[str], raw: bool = None) -> list[CodeLine]:
-        lines: list[CodeLine] = []
+    def _create_lines(self, *strings: str, plain: bool = None) -> list[CodeLine]:
+        lines: list[CodeLine] = None
         for string in strings:
-            for text in split_lines(string):
-                line = CodeLine(self, text)
-                lines.append(line)
-        prev_line: CodeLine = None
-        for line_index, line in enumerate(lines, index):
-            mobject = self._create_text(line.text, raw=raw)
-            if line_index == 0:
-                if not self._lines:
-                    x = -(self.config.width / 2) + self.style.horizontal_padding
-                    y = self.config.height / 2 - self.style.top_padding
-                    mobject.move_to([x, y, 0], UL)
-                else:
-                    mobject.align_to(self._lines[0]._mobject, UL)
-            else:
-                if prev_line is None:
-                    prev_line = self._lines[line_index - 1]
-                mobject.next_to(prev_line._mobject, DOWN, buff=self.style.line_gap)
-                mobject.align_to(prev_line._mobject, LEFT)
-            line._mobject = mobject
-            prev_line = line
+            for line in split_lines(string):
+                lines.append(CodeLine.parse(self, line, plain=plain))
         return lines
     
-    def _find_scroll_for(self, first_line: CodeLine, last_line: CodeLine = None) -> float:
-        threshold = first_line._mobject.height / 2
-        upper_limit = self.config.height / 2 - self.style.top_padding
-        top = first_line._mobject.get_top()[1]
-        if top > upper_limit + threshold:
-            return -(top - upper_limit)
-        lower_limit = - self.config.height / 2 + self.style.bottom_padding
-        bottom = last_line._mobject.get_bottom()[1] - self.style.line_gap
-        if bottom < lower_limit - threshold:
-            return lower_limit - bottom
-        return 0
-
-    def _animate_insert(self, lines: list[CodeLine], at_once: bool = None) -> None:
-        if not lines:
-            return
-        if at_once:
-            animation: list[Animation] = []
-            for line in lines:
-                animation.append(FadeIn(line._mobject))
-            self._scene.play(*animation, run_time=self.config.transition_speed)
+    def _position_lines(self, lines: list[CodeLine], index: int, offset: float) -> None:
+        prev_line: CodeLine = None
+        for line_index, line in enumerate(lines, index):
+            if line_index == 0:
+                line._position(self.top + offset, self.left)
+            else:
+                if prev_line is None:
+                    prev_line = self.lines[line_index - 1]
+                line._position(prev_line.bottom + offset, prev_line.left)
+            prev_line = line
+  
+    def _animate_scroll_to_fit(self, first_line: CodeLine, last_line: CodeLine = None) -> float:
+        if last_line is None:
+            last_line = first_line
+        threshold = first_line.height / 2
+        if first_line.top > self.top + threshold:
+            offset = first_line.top - self.top
+        elif last_line.bottom < self.bottom - threshold:
+            offset = -(self.bottom - last_line.bottom)
         else:
-            for line in lines:
-                duration = len(line.text.replace(' ', '')) * self.config.typing_speed
-                self._scene.play(AddTextLetterByLetter(line._mobject), run_time=duration)
+            offset = 0
+        self._animate_slide(offset)
+        return offset
 
-    def _animate_remove(self, lines: list[CodeLine]) -> None:
-        height_diff = 0
-        animation: list[Animation] = []
-        for line in self._lines:
-            if line in lines:
-                height_diff += self._height(line)
-                animation.append(FadeOut(line._mobject))
-            elif height_diff:
-                animation.append(line._mobject.animate.shift(height_diff * UP))
-        if animation:
-            self._scene.play(*animation, run_time=self.config.transition_speed)
-
-    def _animate_replace(self, index: int, old_lines: list[CodeLine], new_lines: list[CodeLine]) -> None:
-        height_diff = -self._height(*new_lines)
-        animation: list[Animation] = []
-        for line in self._lines[index:]:
-            if line in old_lines:
-                height_diff += self._height(line)
-                animation.append(FadeOut(line._mobject))
-            elif height_diff:
-                animation.append(line._mobject.animate.shift(height_diff * UP))
-        if animation:
-            self._scene.play(*animation, run_time=self.config.transition_speed)
-    
-    def _animate_enclose(
-            self,
-            before_index: int,
-            after_index: int,
-            before_lines: list[CodeLine],
-            after_lines: list[CodeLine],
-            indent: int = None,
-    ):
-        height_diff = -self._height(*before_lines)
-        animation: list[Animation] = []
-        for line in self._lines[before_index:after_index]:
-            indent_diff = line._mobject.width / len(line.text) * indent if indent else 0
-            if height_diff or indent_diff:
-                animation.append(line._mobject.animate.shift(height_diff * UP + indent_diff * RIGHT))
-        for line in after_lines:
-            line._mobject.shift(height_diff * UP)
-        height_diff -= self._height(*after_lines)
-        for line in self._lines[after_index:]:
-            if height_diff:
-                animation.append(line._mobject.animate.shift(height_diff * UP))
-        if animation:
-            self._scene.play(*animation, run_time=self.config.transition_speed)
- 
-    def _animate_slide(self, slide: float, lines: list[CodeLine] = None) -> None:
+    def _animate_slide(self, offset: float, lines: list[CodeLine] = None) -> None:
         if lines is None:
-            lines = self._lines
-        if not slide or not lines or not self._lines:
+            lines = self.lines
+        if not offset or not lines:
             return
-        animation: list[Animation] = []
         for line in lines:
-            animation.append(line._mobject.animate.shift(slide * UP))
-        if animation:
-            self._scene.play(*animation, run_time=self.config.transition_speed)
+            line._animate_slide(offset)
+        self._play_transitions()
+
+    def _animate_insert(
+            self,
+            insertions: dict[int, list[CodeLine]],
+            replace_lines: list[CodeLine] = None,
+            indent_lines: list[CodeLine] = None,
+            indent_level: int = None,
+            indent_prompt: str = None,
+            plain: bool = None,
+    ) -> None:
+        if replace_lines is None:
+            replace_lines = []
+        offset = 0.0
+        offsets: dict[int, float] = {}
+        new_lines: list[CodeLine] = []
+        first_index: int = None
+        for index, lines in sorted(insertions.items()):
+            self._position_lines(lines, index, offset)
+            new_lines.extend(lines)
+            for old_line, new_line in zip_longest(replace_lines, lines):
+                if old_line and new_line:
+                    old_line._animate_remove(replace_with=new_line)
+                elif old_line:
+                    old_line._animate_remove()
+                    offset -= old_line.height
+                elif new_line:
+                    offset += new_line.height
+            offsets[index] = offset
+            if first_index is None:
+                first_index = index
+                offset = self._animate_scroll_to_fit(lines[0], lines[-1])
+                for line in lines:
+                    line._slide(offset)
+        offset = 0.0
+        for index, line in enumerate(self.lines[first_index:], first_index):
+            if index in offsets:
+                offset = offsets[index]
+            if line in indent_lines:
+                indent, prompt = indent_level, indent_prompt
+            else:
+                indent, prompt = None, None
+            line._animate_slide(offset, indent=indent, prompt=prompt)
+        self._play_transitions()
+        for line in new_lines:
+            line._animate_insert(plain=plain)
+        self._play_transitions()
+    
+    def _animate_remove(self, lines: list[CodeLine]) -> None:
+        offset = 0.0
+        for line in self.lines:
+            if line in lines:
+                offset -= line.height
+                line._animate_remove()
+            elif offset:
+                line._animate_slide(offset)
+        self._play_transitions()
 
     def _animate_opacity(self, opacity: float, lines: list[CodeLine] = None) -> None:
         if not lines:
-            lines = self._lines
-        animation: list[Animation] = []
+            lines = self.lines
         for line in lines:
-            animation.append(line._mobject.animate.set_opacity(opacity))
-        if animation:
-            self._scene.play(*animation, run_time=self.config.transition_speed)
+            line._animate_opacity(opacity)
+        self._play_transitions()
     
     @contextlib.contextmanager
     def _animate_highlights(self, pattern: Pattern, lines: list[CodeLine]) -> ContextManager[None]:
-        appear: list[Animation] = []
-        disappear: list[Animation] = []
+        highlights: list[Rectangle] = []
         for line in lines:
-            char_width = line._mobject.width / len(line.text)
-            for match in pattern.finditer(line.text):
+            char_width = line.width / len(line.string)
+            for match in pattern.finditer(line.string):
                 start, end = match.start(), match.end()
                 highlight = Rectangle(
-                    height = line._mobject.height + self.style.highlight_padding,
+                    height = line.height + self.theme.highlight_padding,
                     width = 0.01,
-                    fill_color = self.style.highlight_color,
+                    fill_color = self.theme.highlight_color,
                     fill_opacity = 1,
                 )
-                highlight.align_to(line._mobject, UL)
+                highlight.move_to([line.top, line.left, 0], UL)
                 highlight.shift((start - 0.5) * char_width * RIGHT)
-                highlight.shift(self.style.highlight_padding / 2 * UP)
-                self._scene.add(highlight)
-                appear.append(highlight.animate.stretch_to_fit_width((end - start + 1) * char_width, about_edge=LEFT))
-                disappear.append(FadeOut(highlight))
-        if not appear:
-            return
-        self._scene.play(LaggedStart(*appear, lag_ratio=0.2, run_time=self.config.transition_speed))
+                highlight.shift(self.theme.highlight_padding / 2 * UP)
+                self.scene.add(highlight)
+                self._add_transition(highlight.animate.stretch_to_fit_width((end - start + 1) * char_width, about_edge=LEFT))
+                highlights.append(highlight)
+        self._play_transitions(lag=0.2)
         try:
             yield
         finally:
-            self._scene.play(*disappear, run_time=self.config.transition_speed)
+            for highlight in highlights:
+                self._add_transition(FadeOut(highlight))
+            self._play_transitions()
 
 
 from .codeconfig import CodeConfig
 from .codeline import CodeLine, CodeLineGroup
 from .codescene import CodeScene
-from .syntaxhighlighter import SyntaxHighligher
+from .fontalignment import FontAlignment
+from .syntaxhighlighting import SyntaxHighligher
