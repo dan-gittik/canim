@@ -10,9 +10,7 @@ from ..codeconfig import CodeConfig
 
 class Bauhaus(Window):
     font = 'DM Mono'
-    title_font = paragraph_font = 'Josefin Sans'
-    title_size = 42
-    paragraph_size = 28
+    paragraph_font = 'Josefin Sans'
     background_color = '#f0e2c8'
     window_border_color = '#252525'
     navbar_color = '#629ebb'

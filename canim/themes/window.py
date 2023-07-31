@@ -21,8 +21,7 @@ class Window(CodeConfig.theme):
     font = 'Consolas'
     font_size = 20
     font_color = '#000000'
-    title_font = paragraph_font = 'Arial'
-    title_size = 32
+    paragraph_font = 'Arial'
     line_gap = 0.25
     draw_window = False
     background_color = '#ffffff'

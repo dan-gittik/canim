@@ -349,20 +349,24 @@ class CodeBlock:
             title: bool = False,
             paragraph: bool = False,
     ) -> MarkupText:
-        font = font_size = font_color = None
+        font, font_size, font_color = self.theme.font, self.theme.font_size, self.theme.font_color
         if title:
-            font, font_size, font_color = self.theme.title_font, self.theme.title_size, self.theme.title_color
+            font = self.theme.title_font or self.theme.paragraph_font or font
+            font_size = self.theme.title_size or font_size * 1.5
+            font_color = self.theme.title_color or font_color
             content = f'<span weight="bold">{content}</span>'
         if paragraph:
+            font = self.theme.paragraph_font or self.theme.title_font or font
+            font_size = self.theme.paragraph_size or self.theme.font_size
+            font_color = self.theme.paragraph_color or font_color
             right, _ = self.theme.text_offset
-            font, font_size, font_color = self.theme.paragraph_font, self.theme.paragraph_size, self.theme.paragraph_color
             width = self.config.width - self.theme.horizontal_padding * 2 - abs(right)
             content = self._font_alignment.wrap_paragraph(width, content)
         text = MarkupText(
             text = content,
-            font = font or self.theme.font,
-            font_size = font_size or self.theme.font_size,
-            color = font_color or self.theme.font_color,
+            font = font,
+            font_size = font_size,
+            color = font_color,
         )
         text.z_index = self.theme.text_z_index
         return text
