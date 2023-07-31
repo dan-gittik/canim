@@ -34,7 +34,7 @@ class CodeConfig(Config):
         return '|'.join(re.escape(prompt) for prompt in self.prompts)
 
     class theme(Config):
-        animate = False
+        animate = True
         font = 'Monospace'
         font_size = 20
         font_color = '#000000'
@@ -66,9 +66,12 @@ class CodeConfig(Config):
         def bottom_padding(self) -> float:
             return 0
 
-        def init(self, scene: CodeScene):
+        def init(self, scene: CodeScene) -> None:
             if self.background_color:
                 scene.camera.background_color = self.background_color
+        
+        def resize(self, scene: CodeScene) -> None:
+            pass
 
         class syntax(Config):
             color1 = '#0000ff'
