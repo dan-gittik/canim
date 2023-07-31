@@ -15,8 +15,6 @@ class CodeConfig(Config):
     language: str = None
     prompts: list[str] = None
     default_indent: int = 4
-    syntax_highlighting: bool = None
-    animation: bool = True
     typing_speed = 0.1
     transition_speed = 0.5
     voiceover = False

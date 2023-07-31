@@ -31,7 +31,7 @@ class CodeLine:
         if indent is None:
             indent = 0
         if plain is None:
-            plain = block.config.syntax_highlighting
+            plain = False
         self.block = block
         self.content = content
         self.indent = indent
