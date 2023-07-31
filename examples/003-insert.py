@@ -2,7 +2,7 @@ from canim import code_animation, CodeScene
 
 
 @code_animation
-def slide_down(scene: CodeScene):
+def example(scene: CodeScene):
     code = scene.code()
     code >> 'Line 1'
     line4, = code >> 'Line 4'

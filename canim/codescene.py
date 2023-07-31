@@ -1,7 +1,14 @@
 from __future__ import annotations
-from typing import Any
+from typing import Any, Callable
 
 from manim_voiceover import VoiceoverScene
+
+
+def code_animation(function: Callable) -> Callable:
+    return type(function.__name__, (CodeScene,), dict(
+        construct = function,
+        __module__ = function.__module__, # Required by manim to recognize that a class is a scene.
+    ))
 
 
 class CodeScene(VoiceoverScene):

@@ -30,9 +30,8 @@ class PangoFormatter(Formatter):
         italic = 'style',
     )
 
-    def __init__(self, debug: bool = False, **theme: str):
+    def __init__(self, **theme: str):
         super().__init__()
-        self.debug = debug
         self.tags: dict[str, tuple[str, str]] = {}
         for token, option in theme.items():
             token = 'Token.' + '.'.join(word.capitalize() for word in token.split('_'))
@@ -65,8 +64,7 @@ class PangoFormatter(Formatter):
         if not value:
             return ''
         start = end = ''
-        if self.debug:
-            log(f'considering {token} {value!r}')
+        log(f'considering {token} {value!r}')
         while '.' in token:
             start, end = self.tags[token]
             if start and end:

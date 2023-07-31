@@ -14,8 +14,9 @@ class CodeConfig(Config):
     small_height = 4
     language: str = None
     prompts: list[str] = None
+    default_indent: int = 4
     syntax_highlighting: bool = None
-    animation: bool = False
+    animation: bool = True
     typing_speed = 0.1
     transition_speed = 0.5
     voiceover = False
@@ -32,9 +33,10 @@ class CodeConfig(Config):
     def prompt_pattern(self) -> str:
         if not self.prompts:
             return ''
-        return '|'.join(re.escape(prompt) for prompt in prompts)
+        return '|'.join(re.escape(prompt) for prompt in self.prompts)
 
     class theme(Config):
+        animate = False
         font = 'Monospace'
         font_size = 20
         font_color = '#000000'
@@ -50,6 +52,8 @@ class CodeConfig(Config):
         dimmed_opacity = 0.25
         highlight_color = '#ffffaa'
         highlight_padding = 0.2
+        z_index = 0
+        text_z_index = 2
         z_range = 0
 
         @property
@@ -87,7 +91,7 @@ class CodeConfig(Config):
             keyword = '{color1} bold'
             keyword_pseudo = ''
             keyword_type = ''
-            keyword_constant = ''
+            keyword_constant = '{color3} bold'
             keyword_declaration = ''
             keyword_namespace = ''
             keyword_reserved = ''

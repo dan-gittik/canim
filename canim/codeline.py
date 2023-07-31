@@ -9,12 +9,11 @@ from manim import (
     RIGHT,
     Mobject,
     Group,
-    MarkupText,
     FadeIn,
     FadeOut,
     AddTextLetterByLetter,
+    ReplacementTransform,
 )
-from manim.mobject.text.text_mobject import remove_invisible_chars
 
 from .utils import split_lines
 
@@ -24,16 +23,25 @@ class CodeLine:
     def __init__(
             self,
             block: CodeBlock,
-            text: MarkupText,
+            content: str,
             indent: int = None,
-            prompt: MarkupText = None,
+            prompt: str = None,
+            plain: bool = None
     ):
         if indent is None:
             indent = 0
+        if plain is None:
+            plain = block.config.syntax_highlighting
         self.block = block
-        self.text = text
+        self.content = content
         self.indent = indent
-        self.prompt = prompt
+        self.prompt = None
+        if not plain:
+            if block._syntax_highlighter:
+                content = block._syntax_highlighter.highlight(content)
+            if prompt:
+                self.prompt = block._create_text(prompt)
+        self.text = block._create_text(content)
         self._stash: dict[str, Any] = {}
     
     def __repr__(self):
@@ -66,6 +74,11 @@ class CodeLine:
         self._stash.clear()
         return self
     
+    def __add__(self, other: CodeLine|CodeLineGroup) -> CodeLineGroup:
+        if isinstance(other, CodeLine):
+            return CodeLineGroup(self.block, [self, other])
+        return CodeLineGroup(self.block, [self, *other.lines])
+    
     def __mul__(self, pattern: str|Pattern) -> ContextManager[None]:
         context = self.highlight(pattern, **self._stash)
         self._stash.clear()
@@ -95,22 +108,13 @@ class CodeLine:
     
     @classmethod
     def parse(cls, block: CodeBlock, line: str, plain: bool = None) -> CodeLine:
-        if plain is None:
-            plain = block.config.syntax_highlighting
-        prompt = None
-        prefix, whitespace, content = re.match(f'^({block.config.prompt_pattern})?(\s*)(.*)$', line).groups()
-        if not plain:
-            if block._syntax_highlighter:
-                content = block._syntax_highlighter.highlight(content)
-            if prefix:
-                prompt = block._create_text(prefix)
-        text = block._create_text(content)
-        # text.z_index = self.z_index + 2
+        prompt, whitespace, content = re.match(f'^({block.config.prompt_pattern})?(\s*)(.*)$', line).groups()
         return cls(
             block = block,
-            text = text,
+            content = content,
             prompt = prompt,
             indent = len(whitespace),
+            plain = plain,
         )
 
     @property
@@ -120,7 +124,7 @@ class CodeLine:
             output.append(self.prompt.text)
         if self.indent:
             output.append(' ' * self.indent)
-        output.append(self.text.text)
+        output.append(self.content)
         return ''.join(output)
     
     @property
@@ -132,7 +136,7 @@ class CodeLine:
         
     @property
     def top(self) -> float:
-        return self.text.get_top()[1] # + font_offset
+        return self.text.get_top()[1] + self.block._font_alignment.top_margin(self.content)
     
     @property
     def left(self) -> float:
@@ -140,15 +144,15 @@ class CodeLine:
             mobject = self.prompt
         else:
             mobject = self.text
-        return mobject.get_left()[0] # + font_offset
+        return mobject.get_left()[0] - self.block._font_alignment.left_margin(mobject.text)
     
     @property
     def bottom(self) -> float:
-        return self.text.get_bottom()[1] + self.block.theme.line_gap
+        return self.top - self.block._font_alignment.height - self.block.theme.line_gap
     
     @property
     def right(self) -> float:
-        return self.text.get_right()[0] # + font_offset
+        return self.text.get_right()[0] + self.block._font_alignment.right_margin(self.text.text)
 
     @property
     def height(self) -> float:
@@ -160,8 +164,7 @@ class CodeLine:
     
     @property
     def typing_duration(self) -> float:
-        printable = remove_invisible_chars(self.text.text).replace(' ', '')
-        return len(printable) * self.block.config.typing_speed
+        return len(self.content.replace(' ', '')) * self.block.config.typing_speed
 
     def scroll_into_view(self) -> None:
         self.block.scroll_into_view(self)
@@ -208,8 +211,18 @@ class CodeLine:
             plain = plain,
         )
         
-    def remove(self) -> None:
-        self.block.remove_lines([self])
+    def remove(
+            self,
+            dedent_lines: int|CodeLineGroup|list[CodeLine] = None,
+            dedent_level: int = None,
+            dedent_prompt: str = None,
+    ) -> None:
+        self.block.remove_lines(
+            lines = [self],
+            dedent_lines = dedent_lines,
+            dedent_level = dedent_level,
+            dedent_prompt = dedent_prompt,
+        )
     
     def replace(
             self,
@@ -259,26 +272,22 @@ class CodeLine:
         return Group(self.prompt, self.text)
     
     def _position(self, top: float, left: float) -> None:
-        fa = self.block._font_alignment
-        top_margin = fa.top_margin(self.string)
         if self.prompt:
-            self.prompt.move_to([
-                top + top_margin,
-                left + fa.left_margin(self.prompt),
-                0,
-            ], UL)
-            self.text.move_to([
-                top + top_margin,
-                self.prompt.get_right()[0] + fa.right_margin(self.prompt) + fa.left_margin(self.text),
-                0,
-            ], UL)
+            prompt_top = top - self.block._font_alignment.top_margin(self.prompt.text)
+            prompt_left = left + self.block._font_alignment.left_margin(self.prompt.text)
+            self.prompt.move_to([prompt_left, prompt_top, 0], UL)
+            text_top = top - self.block._font_alignment.top_margin(self.content)
+            text_left = (
+                self.prompt.get_right()[0]
+                + self.block._font_alignment.right_margin(self.prompt.text)
+                + self.block._font_alignment.space_width * (self.indent + 1)
+                + self.block._font_alignment.left_margin(self.content)
+            )
+            self.text.move_to([text_left, text_top, 0], UL)
         else:
-            self.text.move_to([
-                top + top_margin,
-                left + fa.left_margin(self.text),
-                0,
-            ], UL)
-        self.text.shift(fa.space_width * self.indent * RIGHT)
+            text_top = top - self.block._font_alignment.top_margin(self.content)
+            text_left = left + self.block._font_alignment.left_margin(self.content)
+            self.text.move_to([text_left, text_top, 0], UL)
 
     def _slide(self, offset: float):
         self._mobject.shift(offset * DOWN)
@@ -292,7 +301,7 @@ class CodeLine:
             self.block.scene.play(AddTextLetterByLetter(self.text), run_time=self.typing_duration)
 
     def _animate_remove(self, replace_with: CodeLine=None) -> None:
-        if self.prompt and replace_with.prompt and self.prompt.text == replace_with.prompt.text:
+        if replace_with and self.prompt and replace_with.prompt and self.prompt.text == replace_with.prompt.text:
             replace_with.prompt = self.prompt
             mobject = self.text
         else:
@@ -305,7 +314,22 @@ class CodeLine:
             indent: int = None,
             prompt: str = None,
     ) -> None:
-        pass
+        if indent is None:
+            indent = 0
+        down = offset * DOWN
+        right = self.block._font_alignment.space_width * indent * RIGHT
+        self.block._add_transition(self.text.animate.shift(down + right))
+        if self.prompt:
+            if prompt and prompt != self.prompt.text:
+                new_prompt = self.block._create_text(prompt)
+                top = self.top - self.block._font_alignment.top_margin(prompt) - offset
+                left = self.left + self.block._font_alignment.left_margin(prompt)
+                new_prompt.move_to([left, top, 0], UL)
+                self.block._add_transition(ReplacementTransform(self.prompt, new_prompt))
+                self.prompt = new_prompt
+            else:
+                self.block._add_transition(self.prompt.animate.shift(down))
+        self.indent += indent
 
     def _animate_opacity(self, opacity: float) -> None:
         self.block._add_transition(self._mobject.animate.set_opacity(opacity))
@@ -348,6 +372,11 @@ class CodeLineGroup:
         self.scroll_into_view(**self._stash)
         self._stash.clear()
         return self
+
+    def __add__(self, other: CodeLine|CodeLineGroup) -> CodeLineGroup:
+        if isinstance(other, CodeLine):
+            return CodeLineGroup(self.block, [*self.lines, other])
+        return CodeLineGroup(self.block, [*self.lines, *other.lines])
     
     def __mul__(self, pattern: str|Pattern) -> ContextManager[None]:
         context = self.highlight(pattern=pattern, **self._stash)
@@ -379,8 +408,18 @@ class CodeLineGroup:
     def scroll_into_view(self) -> None:
         self.block.scroll_into_view(self.lines[0], self.lines[-1])
     
-    def remove(self) -> None:
-        self.block.remove_lines(self.lines)
+    def remove(
+            self,
+            dedent_lines: int|CodeLineGroup|list[CodeLine] = None,
+            dedent_level: int = None,
+            dedent_prompt: str = None,
+    ) -> None:
+        self.block.remove_lines(
+            lines = self.lines,
+            dedent_lines = dedent_lines,
+            dedent_level = dedent_level,
+            dedent_prompt = dedent_prompt,
+        )
     
     def replace(
             self,
@@ -424,7 +463,7 @@ class CodeLineGroup:
             return self.block.highlight_lines(self.lines)
     
 
-def split_enclosure(prompt_pattern: str, string: str) -> tuple[list[str], list[str], str, int]:
+def split_enclosure(prompt_pattern: str, string: str) -> tuple[str, str, str, int]:
     enclosure_pattern = re.compile(rf'^({prompt_pattern})(\s*)\{{\.\.\.\}}$')
     before: list[CodeLine] = []
     after: list[CodeLine] = []
@@ -439,7 +478,7 @@ def split_enclosure(prompt_pattern: str, string: str) -> tuple[list[str], list[s
             lines = after
             continue
         lines.append(line)
-    return before, after, prompt, indent
+    return '\n'.join(before), '\n'.join(after), prompt, indent
 
 
 from .codeblock import CodeBlock

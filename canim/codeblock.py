@@ -2,11 +2,10 @@ from __future__ import annotations
 from typing import Any, ContextManager, Pattern
 
 import contextlib
-from itertools import zip_longest
+import collections
 import re
 
 from manim import (
-    UP,
     UL,
     LEFT,
     RIGHT,
@@ -51,9 +50,9 @@ class CodeBlock:
         lines = []
         for index in selector:
             if isinstance(index, int):
-                lines.append(self._lines[index])
+                lines.append(self.lines[index])
             else:
-                lines.extend(self._lines[index])
+                lines.extend(self.lines[index])
         return CodeLineGroup(self, lines)
     
     def __call__(self, **stash: Any) -> CodeBlock:
@@ -106,7 +105,15 @@ class CodeBlock:
         return -self.config.width / 2 + self.theme.horizontal_padding
 
     def scroll_into_view(self, first_line: CodeLine, last_line: CodeLine = None) -> None:
-        self._animate_scroll_to_fit(first_line, last_line)
+        scroll = self._find_scroll_for(first_line, last_line)
+        self._animate_slide(scroll)
+    
+    def scroll_to_end(self, buffer: int) -> None:
+        if not self.lines:
+            return
+        scroll = self._find_scroll_for(self.lines[-1])
+        scroll -= (self._font_alignment.height + self.theme.line_gap) * buffer
+        self._animate_slide(scroll)
 
     def insert_lines(
             self,
@@ -124,10 +131,7 @@ class CodeBlock:
             index = 0
         if index > len(self.lines):
             index = len(self.lines)
-        if isinstance(indent_lines, int):
-            indent_lines = self.lines[index:index + indent_lines]
-        elif isinstance(indent_lines, CodeLineGroup):
-            indent_lines = indent_lines.lines
+        indent_lines = self._resolve_lines(index, indent_lines)
         self._animate_insert(
             insertions = {index: lines},
             indent_lines = indent_lines,
@@ -135,7 +139,7 @@ class CodeBlock:
             indent_prompt = indent_prompt,
             plain = plain,
         )
-        self._insert(index, lines)
+        self._insert_lines(index, lines)
         return lines
 
     def prepend_lines(
@@ -172,11 +176,26 @@ class CodeBlock:
             plain = plain,
         )
     
-    def remove_lines(self, lines: list[CodeLine]) -> None:
+    def remove_lines(
+            self,
+            lines: list[CodeLine],
+            dedent_lines: int|CodeLineGroup|list[CodeLine],
+            dedent_level: int = None,
+            dedent_prompt: str = None,
+    ) -> None:
         if not lines:
             return
-        self._animate_remove(lines)
-        self._remove(lines)
+        self._sort_lines(lines)
+        index = lines[-1].index + 1
+        dedent_lines = self._resolve_lines(index, dedent_lines)
+        self._sort_lines(dedent_lines)
+        self._animate_remove(
+            lines = lines,
+            dedent_lines = dedent_lines,
+            dedent_level = dedent_level,
+            dedent_prompt = dedent_prompt,
+        )
+        self._remove_lines(lines)
     
     def clear(self) -> None:
         self.remove_lines(self.lines)
@@ -185,7 +204,7 @@ class CodeBlock:
             self,
             lines: list[CodeLine],
             *strings: str,
-            indent_lines: int|list[CodeLine] = None,
+            indent_lines: int|CodeLineGroup|list[CodeLine] = None,
             indent_level: int = None,
             indent_prompt: str = None,
             plain: bool = None,
@@ -193,7 +212,9 @@ class CodeBlock:
         new_lines = self._create_lines(*strings, plain=plain)
         if not lines or not new_lines:
             return
+        self._sort_lines(lines)
         index = lines[0].index
+        indent_lines = self._resolve_lines(index, indent_lines)
         self._animate_insert(
             insertions = {index: new_lines},
             replace_lines = lines,
@@ -202,8 +223,8 @@ class CodeBlock:
             indent_prompt = indent_prompt,
             plain = plain,
         )
-        self._insert(index, new_lines)
-        self._remove(lines)
+        self._insert_lines(index, new_lines)
+        self._remove_lines(lines)
         return new_lines
     
     def enclose_lines(
@@ -218,6 +239,7 @@ class CodeBlock:
     ) -> list[CodeLine]:
         if not lines:
             return
+        self._sort_lines(lines)
         before_index = lines[0].index
         before_lines = self._create_lines(before, plain=plain)
         after_index = lines[-1].index + 1
@@ -230,18 +252,19 @@ class CodeBlock:
             indent_prompt = prompt,
             plain = plain,
         )
-        self._insert(before_index, before_lines)
-        self._insert(after_index, after_lines)
+        self._insert_lines(before_index, before_lines)
+        self._insert_lines(after_index, after_lines)
         return new_lines
     
     @contextlib.contextmanager
     def highlight_lines(self, lines: list[CodeLine]) -> None:
         if not lines:
             return
+        self._sort_lines(lines)
         self.scroll_into_view(lines[0], lines[-1])
-        other_lines = [line for line in self._lines if line not in lines]
+        other_lines = [line for line in self.lines if line not in lines]
         if other_lines:
-            self._animate_opacity(self.style.dimmed_opacity, other_lines)
+            self._animate_opacity(self.theme.dimmed_opacity, other_lines)
         try:
             yield
         finally:
@@ -250,7 +273,7 @@ class CodeBlock:
     @contextlib.contextmanager
     def highlight_pattern(self, pattern: str|Pattern, lines: list[CodeLine] = None) -> None:
         if not lines:
-            lines = self._lines
+            lines = self.lines
         if isinstance(pattern, str):
             pattern = re.compile(pattern)
         with self._animate_highlights(pattern, lines):
@@ -272,50 +295,67 @@ class CodeBlock:
             self.scene.play(*self._transitions, run_time=run_time)
         self._transitions.clear()
         
-    def _insert(self, index: int, lines: list[CodeLine]) -> None:
+    def _insert_lines(self, index: int, lines: list[CodeLine]) -> None:
         self.lines[index:index] = lines
 
-    def _remove(self, lines: list[CodeLine]) -> None:
+    def _remove_lines(self, lines: list[CodeLine]) -> None:
         self.lines = [line for line in self.lines if line not in lines]
     
-    def _create_text(self, text: str) -> MarkupText:
-        return MarkupText(
-            text = text,
+    def _create_text(self, content: str) -> MarkupText:
+        text = MarkupText(
+            text = content,
             font = self.theme.font,
             font_size = self.theme.font_size,
             color = self.theme.font_color,
         )
+        text.z_index = self.theme.text_z_index
+        return text
 
     def _create_lines(self, *strings: str, plain: bool = None) -> list[CodeLine]:
-        lines: list[CodeLine] = None
+        lines: list[CodeLine] = []
         for string in strings:
             for line in split_lines(string):
                 lines.append(CodeLine.parse(self, line, plain=plain))
         return lines
     
+    def _sort_lines(self, lines: list[CodeLine]) -> None:
+        lines.sort(key=lambda line: line.index)
+    
+    def _resolve_lines(self, index: int, lines: int|CodeLineGroup|list[CodeLine]) -> list[CodeLine]:
+        if not lines:
+            return []
+        if isinstance(lines, int):
+            lines = self.lines[index:index + lines]
+        elif isinstance(lines, CodeLineGroup):
+            lines = lines.lines
+        self._sort_lines(lines)
+        return lines
+
     def _position_lines(self, lines: list[CodeLine], index: int, offset: float) -> None:
         prev_line: CodeLine = None
         for line_index, line in enumerate(lines, index):
             if line_index == 0:
-                line._position(self.top + offset, self.left)
+                if not self.lines:
+                    line._position(self.top - offset, self.left)
+                else:
+                    first_line = self.lines[0]
+                    line._position(first_line.top - offset, first_line.left)
             else:
                 if prev_line is None:
                     prev_line = self.lines[line_index - 1]
-                line._position(prev_line.bottom + offset, prev_line.left)
+                line._position(prev_line.bottom - offset, prev_line.left)
             prev_line = line
+            offset = 0
   
-    def _animate_scroll_to_fit(self, first_line: CodeLine, last_line: CodeLine = None) -> float:
+    def _find_scroll_for(self, first_line: CodeLine, last_line: CodeLine = None) -> float:
         if last_line is None:
             last_line = first_line
         threshold = first_line.height / 2
         if first_line.top > self.top + threshold:
-            offset = first_line.top - self.top
-        elif last_line.bottom < self.bottom - threshold:
-            offset = -(self.bottom - last_line.bottom)
-        else:
-            offset = 0
-        self._animate_slide(offset)
-        return offset
+            return first_line.top - self.top
+        if last_line.bottom < self.bottom - threshold:
+            return -(self.bottom - last_line.bottom)
+        return 0
 
     def _animate_slide(self, offset: float, lines: list[CodeLine] = None) -> None:
         if lines is None:
@@ -337,49 +377,73 @@ class CodeBlock:
     ) -> None:
         if replace_lines is None:
             replace_lines = []
-        offset = 0.0
-        offsets: dict[int, float] = {}
-        new_lines: list[CodeLine] = []
+        if indent_lines is None:
+            indent_lines = []
+        if indent_level is None:
+            indent_level = self.config.default_indent
+        all_new_lines: list[CodeLine] = []
+        offsets: dict[CodeLine, float] = collections.defaultdict(float)
+        replace_with: dict[CodeLine, CodeLine] = dict.fromkeys(replace_lines)
         first_index: int = None
-        for index, lines in sorted(insertions.items()):
-            self._position_lines(lines, index, offset)
-            new_lines.extend(lines)
-            for old_line, new_line in zip_longest(replace_lines, lines):
-                if old_line and new_line:
-                    old_line._animate_remove(replace_with=new_line)
-                elif old_line:
-                    old_line._animate_remove()
-                    offset -= old_line.height
-                elif new_line:
-                    offset += new_line.height
-            offsets[index] = offset
+        offset = 0.0
+        for index, new_lines in sorted(insertions.items()):
+            self._position_lines(new_lines, index, offset)
             if first_index is None:
                 first_index = index
-                offset = self._animate_scroll_to_fit(lines[0], lines[-1])
-                for line in lines:
-                    line._slide(offset)
+                scroll = self._find_scroll_for(new_lines[0], new_lines[-1])
+                self._animate_slide(scroll)
+                for new_line in new_lines:
+                    new_line._slide(scroll)
+            for old_line, new_line in zip(self.lines[index:], new_lines):
+                if old_line not in replace_lines:
+                    break
+                replace_with[old_line] = new_line
+                offset -= old_line.height
+            offsets[index] = sum(new_line.height for new_line in new_lines)
+            offset += offsets[index]
+            all_new_lines.extend(new_lines)
         offset = 0.0
         for index, line in enumerate(self.lines[first_index:], first_index):
-            if index in offsets:
-                offset = offsets[index]
+            offset += offsets.get(index, 0)
+            if line in replace_lines:
+                line._animate_remove(replace_with=replace_with[line])
+                offset -= line.height
+                continue
             if line in indent_lines:
                 indent, prompt = indent_level, indent_prompt
             else:
                 indent, prompt = None, None
             line._animate_slide(offset, indent=indent, prompt=prompt)
         self._play_transitions()
-        for line in new_lines:
+        for line in all_new_lines:
             line._animate_insert(plain=plain)
         self._play_transitions()
     
-    def _animate_remove(self, lines: list[CodeLine]) -> None:
+    def _animate_remove(
+            self,
+            lines: list[CodeLine],
+            dedent_lines: list[CodeLine] = None,
+            dedent_level: int = None,
+            dedent_prompt: str = None,
+    ) -> None:
+        print(dedent_lines)
+        if dedent_lines is None:
+            dedent_lines = []
+        if dedent_level is None:
+            indent_level = -self.config.default_indent
+        else:
+            indent_level = -dedent_level
         offset = 0.0
         for line in self.lines:
             if line in lines:
                 offset -= line.height
                 line._animate_remove()
-            elif offset:
-                line._animate_slide(offset)
+                continue
+            if line in dedent_lines:
+                indent, prompt = indent_level, dedent_prompt
+            else:
+                indent = prompt = None
+            line._animate_slide(offset, indent=indent, prompt=prompt)
         self._play_transitions()
 
     def _animate_opacity(self, opacity: float, lines: list[CodeLine] = None) -> None:
@@ -393,20 +457,18 @@ class CodeBlock:
     def _animate_highlights(self, pattern: Pattern, lines: list[CodeLine]) -> ContextManager[None]:
         highlights: list[Rectangle] = []
         for line in lines:
-            char_width = line.width / len(line.string)
-            for match in pattern.finditer(line.string):
+            for match in pattern.finditer(line.content):
                 start, end = match.start(), match.end()
                 highlight = Rectangle(
-                    height = line.height + self.theme.highlight_padding,
+                    height = line.height + - self.theme.line_gap + self.theme.highlight_padding,
                     width = 0.01,
                     fill_color = self.theme.highlight_color,
                     fill_opacity = 1,
                 )
-                highlight.move_to([line.top, line.left, 0], UL)
-                highlight.shift((start - 0.5) * char_width * RIGHT)
-                highlight.shift(self.theme.highlight_padding / 2 * UP)
+                highlight.move_to([line.left, line.top + self.theme.highlight_padding / 2, 0], UL)
+                highlight.shift((start - 0.5) * self._font_alignment.space_width * RIGHT)
                 self.scene.add(highlight)
-                self._add_transition(highlight.animate.stretch_to_fit_width((end - start + 1) * char_width, about_edge=LEFT))
+                self._add_transition(highlight.animate.stretch_to_fit_width((end - start + 1) * self._font_alignment.space_width, about_edge=LEFT))
                 highlights.append(highlight)
         self._play_transitions(lag=0.2)
         try:
@@ -421,4 +483,4 @@ from .codeconfig import CodeConfig
 from .codeline import CodeLine, CodeLineGroup
 from .codescene import CodeScene
 from .fontalignment import FontAlignment
-from .syntaxhighlighting import SyntaxHighligher
+from .syntaxhighlighter import SyntaxHighligher
