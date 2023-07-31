@@ -321,7 +321,6 @@ class CodeBlock:
         return lines
     
     def _sort_lines(self, lines: list[CodeLine]) -> None:
-        print([line.index for line in lines])
         lines.sort(key=lambda line: line.index)
     
     def _resolve_lines(self, index: int, lines: int|CodeLineGroup|list[CodeLine]) -> list[CodeLine]:
@@ -429,7 +428,6 @@ class CodeBlock:
             dedent_level: int = None,
             dedent_prompt: str = None,
     ) -> None:
-        print(dedent_lines)
         if dedent_lines is None:
             dedent_lines = []
         if dedent_level is None:
