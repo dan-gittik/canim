@@ -285,10 +285,7 @@ class CodeBlock:
     def _play_transitions(self, lag=None) -> None:
         if not self._transitions:
             return
-        if self.config.animation:
-            run_time = self.config.transition_speed
-        else:
-            run_time = 0
+        run_time = self.config.transition_speed
         if lag:
             self.scene.play(LaggedStart(*self._transitions, lag_ratio=lag, run_time=run_time))
         else:
