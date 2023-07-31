@@ -41,10 +41,10 @@ class CodeBlock:
         else:
             self._syntax_highlighter = None
         self._font_alignment = FontAlignment(
-            font = config.theme.font,
-            font_size = config.theme.font_size,
-            paragraph_font = config.theme.paragraph_font,
-            paragraph_size = config.theme.paragraph_size,
+            font = self.theme.font,
+            font_size = self.theme.font_size,
+            paragraph_font = self.theme.paragraph_font or self.theme.title_font,
+            paragraph_size = self.theme.paragraph_size,
         )
         if self.config.voiceover:
             self.scene.set_speech_service(RecorderService())
