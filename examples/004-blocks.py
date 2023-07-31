@@ -2,7 +2,7 @@ from canim import code_animation, CodeScene
 
 
 @code_animation
-def multiple_lines(scene: CodeScene):
+def example(scene: CodeScene):
     code = scene.code()
     code >> '''
         Line 3

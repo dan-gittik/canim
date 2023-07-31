@@ -11,10 +11,10 @@ from .utils import log
 
 class SyntaxHighligher:
 
-    def __init__(self, language: str, config: CodeConfig.style.syntax):
+    def __init__(self, language: str, theme: CodeConfig.theme.syntax):
         self.language = language
         self._lexer = get_lexer_by_name(self.language)
-        self._formatter = PangoFormatter(**config.as_dict())
+        self._formatter = PangoFormatter(**theme.as_dict())
     
     def __repr__(self):
         return f'<syntax highlighter for {self.language}>'
@@ -30,17 +30,16 @@ class PangoFormatter(Formatter):
         italic = 'style',
     )
 
-    def __init__(self, debug: bool = False, **config):
+    def __init__(self, **theme: str):
         super().__init__()
-        self.debug = debug
         self.tags: dict[str, tuple[str, str]] = {}
-        for token, option in config.items():
+        for token, option in theme.items():
             token = 'Token.' + '.'.join(word.capitalize() for word in token.split('_'))
             if not option:
                 self.tags[token] = '', ''
                 continue
             attributes = {}
-            for value in option.format(**config).split():
+            for value in option.format(**theme).split():
                 if value.startswith('#'):
                     attributes['color'] = value
                 elif value in self.value_attributes:
@@ -65,8 +64,7 @@ class PangoFormatter(Formatter):
         if not value:
             return ''
         start = end = ''
-        if self.debug:
-            log(f'considering {token} {value!r}')
+        log(f'considering {token} {value!r}')
         while '.' in token:
             start, end = self.tags[token]
             if start and end:

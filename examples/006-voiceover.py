@@ -2,7 +2,7 @@ from canim import code_animation, CodeScene
 
 
 @code_animation
-def with_voiceover(scene: CodeScene):
+def example(scene: CodeScene):
     code = scene.code(voiceover=True)
     with code.voiceover('''
         Its a simple idea: we bind a name to a value,{1} like x to 1;

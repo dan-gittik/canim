@@ -1,10 +1,9 @@
-from canim import code_animation, CodeScene
-from canim.styles import Window
+from canim import code_animation, CodeScene, themes
 
 
 @code_animation
-def highlight_lines(scene: CodeScene):
-    code = scene.code(small=True, style=Window())
+def example(scene: CodeScene):
+    code = scene.code(small=True, theme=themes.Window())
     code >> '''
         Line 1
         Line 2

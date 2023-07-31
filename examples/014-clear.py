@@ -1,9 +1,9 @@
-from canim import code_animation, CodeScene
+from canim import code_animation, CodeScene, themes
 
 
 @code_animation
-def clear(scene: CodeScene):
-    code = scene.code()
+def example(scene: CodeScene):
+    code = scene.code(theme=themes.Bauhaus())
     code >> '''
     Line 1
     Line 2
