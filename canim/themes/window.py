@@ -21,6 +21,7 @@ class Window(CodeConfig.theme):
     font = 'Consolas'
     font_size = 20
     font_color = '#000000'
+    paragraph_font = 'Arial'
     line_gap = 0.25
     draw_window = False
     background_color = '#ffffff'
@@ -45,6 +46,10 @@ class Window(CodeConfig.theme):
     @property
     def top_padding(self) -> float:
         return self.navbar_height + self.window_padding
+    
+    @property
+    def text_offset(self) -> tuple[float, float]:
+        return 0, 0
     
     def init(self, scene: CodeScene) -> None:
         super().init(scene)

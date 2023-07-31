@@ -38,6 +38,12 @@ class CodeConfig(Config):
         font = 'Monospace'
         font_size = 20
         font_color = '#000000'
+        title_font = None
+        title_size = None
+        title_color = None
+        paragraph_font = None
+        paragraph_size = None
+        paragraph_color = None
         line_gap = 0.25
         background_color = '#ffffff'
         window_color = '#ffffff'
@@ -65,6 +71,10 @@ class CodeConfig(Config):
         @property
         def bottom_padding(self) -> float:
             return 0
+        
+        @property
+        def text_offset(self) -> tuple[float, float]:
+            return 0, self.navbar_height
 
         def init(self, scene: CodeScene) -> None:
             if self.background_color:
