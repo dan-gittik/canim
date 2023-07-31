@@ -1,17 +1,26 @@
+import textwrap
+
 from manim import Text
 from matplotlib import font_manager
 from PIL import ImageFont
 
-from .utils import log
-
 
 class FontAlignment:
     
-    def __init__(self, font: str, font_size: int):
+    def __init__(
+            self,
+            font: str,
+            font_size: int,
+            paragraph_font: str = None,
+            paragraph_size: int = None,
+    ):
         self.font = font
         self.font_size = font_size
+        self.paragraph_font = paragraph_font or font
+        self.paragraph_size = paragraph_size or font_size
         self.space_width = Text('_' * 100, font=self.font, font_size=self.font_size).width / 100
-        self._font = ImageFont.truetype(font_manager.findfont(self.font), self.font_size)
+        self._font = self._load_font(self.font, self.font_size)
+        self._paragraph_font = self._load_font(self.paragraph_font, self.paragraph_size)
         self._top_margins: dict[str, float] = {}
         self._left_margins: dict[str, float] = {}
         x = Text('x', font=self.font, font_size=self.font_size)
@@ -34,6 +43,16 @@ class FontAlignment:
     def right_margin(self, string: str) -> float:
         return self._horizontal_margin(string.strip()[-1])
     
+    def wrap_paragraph(self, width: float, text: str) -> str:
+        output: list[str] = []
+        for line in text.splitlines():
+            average = Text(line, font=self.paragraph_font, font_size=self.paragraph_size).width / len(line)
+            output.append(textwrap.fill(line, int(width / average)))
+        return '\n'.join(output)
+    
+    def _load_font(self, font: str, font_size: int) -> ImageFont.FreeTypeFont:
+        return ImageFont.truetype(font_manager.findfont(font), font_size)
+
     def _horizontal_margin(self, char: str) -> float:
         if char not in self._left_margins:
             text = Text(char, font=self.font, font_size=self.font_size)

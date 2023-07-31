@@ -1,18 +1,22 @@
 from __future__ import annotations
-from typing import Any, ContextManager, Pattern
+from typing import Any, Generator, Pattern
 
 import contextlib
 import collections
+import pathlib
 import re
 
 from manim import (
     UL,
     LEFT,
     RIGHT,
+    DOWN,
     MarkupText,
     Rectangle,
     Animation,
+    Create,
     FadeOut,
+    ReplacementTransform,
     LaggedStart,
 )
 from manim_voiceover import VoiceoverTracker
@@ -36,7 +40,12 @@ class CodeBlock:
             self._syntax_highlighter = SyntaxHighligher(config.language, config.theme.syntax)
         else:
             self._syntax_highlighter = None
-        self._font_alignment = FontAlignment(config.theme.font, config.theme.font_size)
+        self._font_alignment = FontAlignment(
+            font = config.theme.font,
+            font_size = config.theme.font_size,
+            paragraph_font = config.theme.paragraph_font,
+            paragraph_size = config.theme.paragraph_size,
+        )
         if self.config.voiceover:
             self.scene.set_speech_service(RecorderService())
         self.config.theme.init(self.scene)
@@ -83,7 +92,7 @@ class CodeBlock:
         return self
     
     @contextlib.contextmanager
-    def voiceover(self, text: str) -> ContextManager[VoiceoverTracker]:
+    def voiceover(self, text: str) -> Generator[VoiceoverTracker, None, None]:
         text = bookmark_regex.sub(r'<bookmark mark="\1" />', text)
         with self.scene.voiceover(text=text) as tracker:
             yield tracker
@@ -257,33 +266,64 @@ class CodeBlock:
         return new_lines
     
     @contextlib.contextmanager
-    def highlight_lines(self, lines: list[CodeLine]) -> None:
+    def highlight_lines(self, lines: list[CodeLine]) -> Generator[None, None, None]:
         if not lines:
             return
         self._sort_lines(lines)
         self.scroll_into_view(lines[0], lines[-1])
         other_lines = [line for line in self.lines if line not in lines]
-        if other_lines:
-            self._animate_opacity(self.theme.dimmed_opacity, other_lines)
-        try:
+        with self._animate_opacity(self.theme.dimmed_opacity, other_lines):
             yield
-        finally:
-            self._animate_opacity(1, other_lines)
-    
+
     @contextlib.contextmanager
-    def highlight_pattern(self, pattern: str|Pattern, lines: list[CodeLine] = None) -> None:
+    def highlight_pattern(self, pattern: str|Pattern, lines: list[CodeLine] = None) -> Generator[None, None, None]:
         if not lines:
             lines = self.lines
         if isinstance(pattern, str):
             pattern = re.compile(pattern)
         with self._animate_highlights(pattern, lines):
             yield
-    
+     
+    @contextlib.contextmanager
+    def hidden_lines(self, lines: list[CodeLine] = None) -> Generator[None, None, None]:
+        with self._animate_opacity(0, lines):
+            yield
+
     def resize(self) -> None:
         self.clear()
         self.config.small = not self.config.small
         self.config.theme.resize(self.scene)
-        
+    
+    @contextlib.contextmanager
+    def title(self, content: str) -> Generator[None, None, None]:
+        with self.hidden_lines():
+            text = self._create_text(content, title=True)
+            right, down = self.theme.text_offset
+            text.shift(right * RIGHT + down * DOWN)
+            self._add_transition(Create(text))
+            self._play_transitions()
+            try:
+                yield
+            finally:
+                self._add_transition(FadeOut(text))
+                self._play_transitions()
+
+    @contextlib.contextmanager
+    def paragraph(self, content: str) -> Generator[Paragraph, None, None]:
+        with self.hidden_lines():
+            text = self._create_text(content, paragraph=True)
+            _, down = self.theme.text_offset
+            text.shift(down * DOWN)
+            text.set_x(self.left + text.width / 2)
+            self._add_transition(Create(text))
+            self._play_transitions()
+            try:
+                paragraph = Paragraph(self, text)
+                yield paragraph
+            finally:
+                self._add_transition(FadeOut(paragraph.text))
+                self._play_transitions()
+
     def _add_transition(self, transition: Animation) -> None:
         self._transitions.append(transition)
     
@@ -303,12 +343,26 @@ class CodeBlock:
     def _remove_lines(self, lines: list[CodeLine]) -> None:
         self.lines = [line for line in self.lines if line not in lines]
     
-    def _create_text(self, content: str) -> MarkupText:
+    def _create_text(
+            self,
+            content: str,
+            title: bool = False,
+            paragraph: bool = False,
+    ) -> MarkupText:
+        font = font_size = font_color = None
+        if title:
+            font, font_size, font_color = self.theme.title_font, self.theme.title_size, self.theme.title_color
+            content = f'<span weight="bold">{content}</span>'
+        if paragraph:
+            right, _ = self.theme.text_offset
+            font, font_size, font_color = self.theme.paragraph_font, self.theme.paragraph_size, self.theme.paragraph_color
+            width = self.config.width - self.theme.horizontal_padding * 2 - abs(right)
+            content = self._font_alignment.wrap_paragraph(width, content)
         text = MarkupText(
             text = content,
-            font = self.theme.font,
-            font_size = self.theme.font_size,
-            color = self.theme.font_color,
+            font = font or self.theme.font,
+            font_size = font_size or self.theme.font_size,
+            color = font_color or self.theme.font_color,
         )
         text.z_index = self.theme.text_z_index
         return text
@@ -449,15 +503,24 @@ class CodeBlock:
             line._animate_slide(offset, indent=indent, prompt=prompt)
         self._play_transitions()
 
-    def _animate_opacity(self, opacity: float, lines: list[CodeLine] = None) -> None:
+    @contextlib.contextmanager
+    def _animate_opacity(self, opacity: float, lines: list[CodeLine] = None) -> Generator[None, None, None]:
         if not lines:
             lines = self.lines
+        original_opacities = []
         for line in lines:
+            original_opacities.append(line.text.opacity)
             line._animate_opacity(opacity)
         self._play_transitions()
-    
+        try:
+            yield
+        finally:
+            for line, original_opacity in zip(lines, original_opacities):
+                line._animate_opacity(original_opacity)
+            self._play_transitions()
+
     @contextlib.contextmanager
-    def _animate_highlights(self, pattern: Pattern, lines: list[CodeLine]) -> ContextManager[None]:
+    def _animate_highlights(self, pattern: Pattern, lines: list[CodeLine]) -> Generator[None, None, None]:
         highlights: list[Rectangle] = []
         for line in lines:
             for match in pattern.finditer(line.content):
@@ -480,6 +543,20 @@ class CodeBlock:
             for highlight in highlights:
                 self._add_transition(FadeOut(highlight))
             self._play_transitions()
+
+
+class Paragraph:
+
+    def __init__(self, block: CodeBlock, text: MarkupText):
+        self.block = block
+        self.text = text
+    
+    def change(self, content: str) -> None:
+        new_text = self.block._create_text(content, paragraph=True)
+        new_text.align_to(self.text, UL)
+        self.block._add_transition(ReplacementTransform(self.text, new_text))
+        self.block._play_transitions()
+        self.text = new_text
 
 
 from .codeconfig import CodeConfig

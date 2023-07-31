@@ -10,6 +10,9 @@ from ..codeconfig import CodeConfig
 
 class Bauhaus(Window):
     font = 'DM Mono'
+    title_font = paragraph_font = 'Josefin Sans'
+    title_size = 42
+    paragraph_size = 28
     background_color = '#f0e2c8'
     window_border_color = '#252525'
     navbar_color = '#629ebb'
@@ -27,6 +30,11 @@ class Bauhaus(Window):
     @property
     def top_padding(self) -> float:
         return super().top_padding + self.border_offset
+    
+    @property
+    def text_offset(self) -> tuple[float, float]:
+        right, down = super().text_offset
+        return right - self.border_offset, down + self.border_offset
     
     def _draw(self, scene: CodeScene) -> None:
         super()._draw(scene)
