@@ -45,7 +45,8 @@ class CodeLine:
         self._stash: dict[str, Any] = {}
     
     def __repr__(self):
-        return f'<line {self.index or "*"}: {self.string}>'
+        index = self.index
+        return f'<line {index if index is not None else "-"}: {self.string}>'
 
     def __enter__(self):
         self._context = self.highlight(**self._stash)

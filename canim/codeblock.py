@@ -179,7 +179,7 @@ class CodeBlock:
     def remove_lines(
             self,
             lines: list[CodeLine],
-            dedent_lines: int|CodeLineGroup|list[CodeLine],
+            dedent_lines: int|CodeLineGroup|list[CodeLine] = None,
             dedent_level: int = None,
             dedent_prompt: str = None,
     ) -> None:
@@ -198,7 +198,7 @@ class CodeBlock:
         self._remove_lines(lines)
     
     def clear(self) -> None:
-        self.remove_lines(self.lines)
+        self.remove_lines(self.lines.copy())
     
     def replace_lines(
             self,
@@ -278,6 +278,11 @@ class CodeBlock:
             pattern = re.compile(pattern)
         with self._animate_highlights(pattern, lines):
             yield
+    
+    def resize(self) -> None:
+        self.clear()
+        self.config.small = not self.config.small
+        self.config.theme.resize(self.scene)
         
     def _add_transition(self, transition: Animation) -> None:
         self._transitions.append(transition)
@@ -316,6 +321,7 @@ class CodeBlock:
         return lines
     
     def _sort_lines(self, lines: list[CodeLine]) -> None:
+        print([line.index for line in lines])
         lines.sort(key=lambda line: line.index)
     
     def _resolve_lines(self, index: int, lines: int|CodeLineGroup|list[CodeLine]) -> list[CodeLine]:

@@ -28,8 +28,8 @@ class Bauhaus(Window):
     def top_padding(self) -> float:
         return super().top_padding + self.border_offset
     
-    def _animate(self, scene: CodeScene) -> None:
-        super()._animate(scene)
+    def _draw(self, scene: CodeScene) -> None:
+        super()._draw(scene)
         if self.animate:
             if self.border_offset:
                 self._overflow_navbar = self._overflow_top.copy()
@@ -37,7 +37,14 @@ class Bauhaus(Window):
                 self._overflow_navbar.stretch(self.border_offset / self.config.height, dim=1)
                 self._overflow_navbar.align_to(self._window, UL)
                 scene.add(self._overflow_navbar)
-                scene.play(self._controls.animate.shift(self.border_offset * DL), run_time=1)
+                scene.play(
+                    self._border.animate.shift(self.border_offset * DL),
+                    self._navbar.animate.shift(self.border_offset * DL),
+                    self._buttons.animate.shift(self.border_offset * DL),
+                    run_time = 1,
+                )
         else:
             if self.border_offset:
-                self._controls.shift(self.border_offset * DL)
+                self._border.shift(self.border_offset * DL)
+                self._buttons.shift(self.border_offset * DL)
+                self._navbar.shift(self.border_offset * DL)
